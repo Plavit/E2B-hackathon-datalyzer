@@ -34,13 +34,16 @@ Would be nice, but better luck next time:
 
 ## How we built it
 It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, specifically:
+
 - Agentic backend is via E2B sandboxing (obviously) and LLM API calls, we use OpenAI
 - Internal logic is vibe-coded in python
 - Dependencies: pandas, pyarrow, fastparquet, python-docx, PyPDF2, openai, dash
 - Frontend is using Plotly D
 
+Built by [@Plavit](https://github.com/Plavit/) and [@Shippy](https://github.com/Shippy/)
+
 Start of hackathon when we refined the idea: ca. 🕚11AM:
-TBD image
+![photo_2025-03-22_15-35-09](https://github.com/user-attachments/assets/a2bd3ff6-10f8-4c2f-a484-ed2440a2852c)
 
 End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was submission deadline how did you guess?):
 TBD image
