@@ -29,13 +29,101 @@ from e2b_hackathon.execute_code_with_data import execute_code_with_data
 # Initialize the Dash app
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        "https://use.fontawesome.com/releases/v5.15.4/css/all.css",
+    ],
     suppress_callback_exceptions=True,
     title="Datalyzer",
 )
 log = structlog.get_logger()
 SEED = 42
 
+# Add custom CSS
+app.index_string = """
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            /* Custom scrollbar */
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            ::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #555;
+            }
+            
+            /* Scrolling analysis sections */
+            .analysis-scrolling {
+                padding-right: 5px;
+            }
+            
+            /* Left column styles */
+            .analysis-column {
+                border-right: 1px solid #dee2e6;
+                height: calc(100vh - 150px);
+                overflow-y: auto;
+                padding-right: 15px;
+            }
+            
+            /* Right column styles for file analysis */
+            .files-column {
+                height: calc(100vh - 150px);
+                overflow-y: auto;
+                padding-left: 15px;
+            }
+            
+            /* Card hover effect */
+            .file-card:hover {
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                transition: box-shadow 0.3s ease;
+            }
+            
+            /* Border-left utility classes */
+            .border-left-primary {
+                border-left: 4px solid #4e73df !important;
+            }
+            
+            .border-left-success {
+                border-left: 4px solid #1cc88a !important;
+            }
+            
+            .border-left-info {
+                border-left: 4px solid #36b9cc !important;
+            }
+            
+            .border-left-warning {
+                border-left: 4px solid #f6c23e !important;
+            }
+            
+            .border-left-danger {
+                border-left: 4px solid #e74a3b !important;
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+"""
 
 # Initialize OpenAI client (will use API key from environment)
 try:
@@ -66,14 +154,67 @@ layout = dbc.Container(
         ),
         dbc.Row(
             [
+                # Left column (one-third) - Analysis Results
                 dbc.Col(
                     [
+                        # Correlation analysis section
+                        html.Div(
+                            [
+                                html.H3("Correlation Analysis", className="mt-4 mb-3"),
+                                html.Button(
+                                    "Analyze Correlations",
+                                    id="analyze-correlations-button",
+                                    className="btn btn-primary mb-3",
+                                ),
+                                dcc.Loading(
+                                    id="loading-correlation",
+                                    type="circle",
+                                    children=html.Div(id="correlation-loading-output"),
+                                ),
+                                html.Div(id="correlation-output"),
+                            ],
+                            className="mb-4",
+                        ),
+                        # AI Analysis Plan section
+                        html.Div(
+                            [
+                                html.H3("AI Analysis Plan", className="mt-4 mb-3"),
+                                html.Button(
+                                    "Generate Analysis Plan",
+                                    id="generate-plan-button",
+                                    className="btn btn-primary mb-3",
+                                ),
+                                dcc.Loading(
+                                    id="loading-plan",
+                                    type="circle",
+                                    children=html.Div(id="plan-loading-output"),
+                                ),
+                                html.Div(id="ai-plan-output"),
+                            ],
+                            className="mb-4",
+                        ),
+                        # AI Analysis Results section
+                        html.Div(
+                            [
+                                html.H3("AI Analysis Results", className="mt-4 mb-3"),
+                                html.Div(id="ai-results-output"),
+                            ],
+                            className="mb-4",
+                        ),
+                    ],
+                    width=4,
+                    className="analysis-column pe-4",
+                ),
+                # Right column (two-thirds) - File Upload and Analysis
+                dbc.Col(
+                    [
+                        # Unified file upload section
                         dbc.Card(
                             [
                                 dbc.CardBody(
                                     [
                                         html.H5(
-                                            "Unified File Upload",
+                                            "File Upload",
                                             className="card-title",
                                         ),
                                         html.P(
@@ -112,107 +253,40 @@ layout = dbc.Container(
                             ],
                             className="mb-4",
                         ),
-                    ],
-                    width=12,
-                ),
-            ]
-        ),
-        # Loading spinner for when analysis is running
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
+                        # Loading spinner and error messages
                         dcc.Loading(
                             id="loading-analysis",
                             type="circle",
                             children=html.Div(id="loading-output"),
                         ),
-                    ],
-                    width=12,
-                )
-            ]
-        ),
-        # Display files currently being analyzed
-        dbc.Row([dbc.Col([html.Div(id="files-being-analyzed")], width=12)]),
-        # Error messages
-        dbc.Row([dbc.Col([html.Div(id="error-message")], width=12)]),
-        # Results section
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.Div(id="data-output", className="mt-4"),
-                    ],
-                    width=12,
-                )
-            ]
-        ),
-        # Context files section
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.Div(id="context-output", className="mt-4"),
-                    ],
-                    width=12,
-                )
-            ]
-        ),
-        # Correlation analysis section
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.H3("Correlation Analysis", className="mt-4 mb-3"),
-                        html.Button(
-                            "Analyze Correlations",
-                            id="analyze-correlations-button",
-                            className="btn btn-primary mb-3",
+                        html.Div(id="files-being-analyzed"),
+                        html.Div(id="error-message"),
+                        # File analysis results sections
+                        html.Div(
+                            [
+                                html.H4("Data File Analysis", className="mt-4 mb-3"),
+                                html.Div(
+                                    id="data-output", className="analysis-scrolling"
+                                ),
+                            ],
+                            className="mb-4 files-column",
                         ),
-                        dcc.Loading(
-                            id="loading-correlation",
-                            type="circle",
-                            children=html.Div(id="correlation-loading-output"),
+                        # Context files section
+                        html.Div(
+                            [
+                                html.H4("Context File Analysis", className="mt-4 mb-3"),
+                                html.Div(
+                                    id="context-output", className="analysis-scrolling"
+                                ),
+                            ],
+                            className="mb-4 files-column",
                         ),
-                        html.Div(id="correlation-output"),
                     ],
-                    width=12,
-                )
-            ]
-        ),
-        # AI Analysis Plan section
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.H3("AI Analysis Plan", className="mt-4 mb-3"),
-                        html.Button(
-                            "Generate Analysis Plan",
-                            id="generate-plan-button",
-                            className="btn btn-primary mb-3",
-                        ),
-                        dcc.Loading(
-                            id="loading-plan",
-                            type="circle",
-                            children=html.Div(id="plan-loading-output"),
-                        ),
-                        html.Div(id="ai-plan-output"),
-                    ],
-                    width=12,
-                )
-            ]
-        ),
-        # AI Analysis Results section
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.H3("AI Analysis Results", className="mt-4 mb-3"),
-                        html.Div(id="ai-results-output"),
-                    ],
-                    width=12,
-                )
-            ]
+                    width=8,
+                    className="ps-4",
+                ),
+            ],
+            className="g-0",  # Remove gutters to avoid extra space between columns
         ),
         # Store components for data
         dcc.Store(id="data-store", storage_type="memory"),
@@ -237,6 +311,7 @@ layout = dbc.Container(
         ),
     ],
     fluid=True,
+    className="px-4 py-3",
 )
 
 # Set the layout
@@ -432,9 +507,39 @@ def create_file_summary_card(file_name: str, file_info: Dict[str, Any]) -> dbc.C
             dbc.ListGroupItem([html.Strong(f"{key}: "), html.Span(value)])
         )
 
+    # Create an icon based on file type
+    file_icon = "fa-file"
+    border_class = "border-left-primary"  # Default border color
+
+    if "DataFrame" in file_type:
+        file_icon = "fa-table"
+        border_class = "border-left-info"
+    elif "Pickle" in file_type:
+        file_icon = "fa-database"
+        border_class = "border-left-primary"
+    elif "JSON" in file_type:
+        file_icon = "fa-code"
+        border_class = "border-left-success"
+    elif "GeoJSON" in file_type:
+        file_icon = "fa-map"
+        border_class = "border-left-success"
+    elif "dict" in file_type:
+        file_icon = "fa-list"
+        border_class = "border-left-warning"
+    elif "list" in file_type or "tuple" in file_type:
+        file_icon = "fa-list-ol"
+        border_class = "border-left-warning"
+    elif "ndarray" in file_type:
+        file_icon = "fa-th"
+        border_class = "border-left-warning"
+
     # Create card content
     card_content = [
-        dbc.CardHeader(html.H5(file_name, className="mb-0")),
+        dbc.CardHeader(
+            html.H5(
+                [html.I(className=f"fas {file_icon} me-2"), file_name], className="mb-0"
+            )
+        ),
         dbc.CardBody(
             [
                 html.H6("Basic Information", className="card-subtitle mb-2 text-muted"),
@@ -445,7 +550,7 @@ def create_file_summary_card(file_name: str, file_info: Dict[str, Any]) -> dbc.C
         ),
     ]
 
-    return dbc.Card(card_content, className="mb-4")
+    return dbc.Card(card_content, className=f"mb-4 file-card {border_class}")
 
 
 def get_additional_info_component(
@@ -1185,6 +1290,18 @@ def update_unified_output(
             # Store the extracted text
             new_context_results[filename] = text_content
 
+            # Determine icon based on file extension
+            ext = os.path.splitext(filename)[1].lower()
+            file_icon = "fa-file-alt"
+            if ext == ".pdf":
+                file_icon = "fa-file-pdf"
+            elif ext in [".docx", ".doc"]:
+                file_icon = "fa-file-word"
+            elif ext == ".txt":
+                file_icon = "fa-file-text"
+            elif ext == ".md":
+                file_icon = "fa-file-code"
+
             # Create a card to display file information and preview
             context_card = dbc.Card(
                 [
@@ -1192,7 +1309,7 @@ def update_unified_output(
                         [
                             html.H5(
                                 [
-                                    html.I(className="fas fa-file-alt me-2"),
+                                    html.I(className=f"fas {file_icon} me-2"),
                                     filename,
                                 ],
                                 className="mb-0",
@@ -1212,10 +1329,20 @@ def update_unified_output(
                                 ),
                                 className="bg-light",
                             ),
+                            html.Div(
+                                [
+                                    html.Strong("File Size: "),
+                                    html.Span(result.get("size", "Unknown")),
+                                    html.Br(),
+                                    html.Strong("Content Length: "),
+                                    html.Span(f"{len(text_content)} characters"),
+                                ],
+                                className="mt-3 small",
+                            ),
                         ]
                     ),
                 ],
-                className="mb-3",
+                className="mb-3 file-card border-left-info",
             )
             context_output_components.append(context_card)
 
@@ -1236,19 +1363,15 @@ def update_unified_output(
                 filename=filename,
             )
 
-    # Format data output
+    # Format data output - use full-width cards for vertical scrolling
     data_output = html.Div("No valid data files uploaded.")
     if data_output_components:
-        data_output = dbc.Row(
-            [dbc.Col(component, md=6, lg=4) for component in data_output_components]
-        )
+        data_output = html.Div(data_output_components)
 
-    # Format context output
+    # Format context output - use full-width cards for vertical scrolling
     context_output = html.Div("Upload context files to see extracted text.")
     if context_output_components:
-        context_output = dbc.Row(
-            [dbc.Col(component, md=6) for component in context_output_components]
-        )
+        context_output = html.Div(context_output_components)
 
     return (
         data_output,
