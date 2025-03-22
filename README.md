@@ -1,6 +1,13 @@
-# E2B Pickle Analyzer
+# E2B Data Project Mess Analyzer
 
 A secure tool for analyzing pickle files using E2B sandbox. This project allows you to analyze pickle files safely in an isolated environment, without risking exposure to potentially malicious code.
+
+## Problem Statement
+TBD
+
+## How we built it
+It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee.
+TBD
 
 ## Features
 
