@@ -2,7 +2,7 @@ import os
 from typing import List
 
 from dotenv import load_dotenv
-from e2b_code_interpreter import CodeInterpreter  # type: ignore
+from e2b_code_interpreter import Sandbox  # type: ignore
 
 
 def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None:
@@ -26,50 +26,51 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
     if verbose:
         print("Initializing E2B sandbox...")
 
-    with CodeInterpreter(api_key=api_key) as code_interpreter:
-        # Upload each pickle file to the sandbox
-        remote_paths = []
-        for file_path in pickle_files:
+    code_interpreter = Sandbox()
+
+    # Upload each pickle file to the sandbox
+    remote_paths = []
+    for file_path in pickle_files:
+        if verbose:
+            print(f"Uploading {file_path} to sandbox...")
+
+        with open(file_path, "rb") as f:
+            remote_path = code_interpreter.files.write(f)
+            remote_paths.append((os.path.basename(file_path), remote_path))
             if verbose:
-                print(f"Uploading {file_path} to sandbox...")
+                print(f"  Uploaded to {remote_path}")
 
-            with open(file_path, "rb") as f:
-                remote_path = code_interpreter.upload_file(f)
-                remote_paths.append((os.path.basename(file_path), remote_path))
-                if verbose:
-                    print(f"  Uploaded to {remote_path}")
+    # Generate and execute code to analyze the pickle files
+    analysis_code = _generate_analysis_code(remote_paths)
 
-        # Generate and execute code to analyze the pickle files
-        analysis_code = _generate_analysis_code(remote_paths)
+    if verbose:
+        print("Executing analysis code...")
+        print("-" * 40)
+        print(analysis_code)
+        print("-" * 40)
 
-        if verbose:
-            print("Executing analysis code...")
-            print("-" * 40)
-            print(analysis_code)
-            print("-" * 40)
+    exec_result = code_interpreter.notebook.exec_cell(
+        analysis_code,
+        on_stdout=lambda stdout: print(stdout) if verbose else None,
+        on_stderr=lambda stderr: print(f"Error: {stderr}") if stderr else None,
+    )
 
-        exec_result = code_interpreter.notebook.exec_cell(
-            analysis_code,
-            on_stdout=lambda stdout: print(stdout) if verbose else None,
-            on_stderr=lambda stderr: print(f"Error: {stderr}") if stderr else None,
-        )
+    if exec_result.error:
+        print(f"Error analyzing pickle files: {exec_result.error}")
+        return
 
-        if exec_result.error:
-            print(f"Error analyzing pickle files: {exec_result.error}")
-            return
+    # Process and display results
+    if verbose:
+        print("\nAnalysis results:")
 
-        # Process and display results
-        if verbose:
-            print("\nAnalysis results:")
-
-        for result in exec_result.results:
-            if hasattr(result, "data"):
-                if "text/plain" in result.data:
-                    print(result.data["text/plain"])
-                elif "text/html" in result.data:
-                    print("HTML output available (not displayed in console)")
-            else:
-                print(result)
+    for result in exec_result.results:
+        if hasattr(result, "data"):
+            if "text/plain" in result.data:
+                print(result.data["text/plain"])
+            elif "text/html" in result.data:
+                print("HTML output available (not displayed in console)")
+        else:
+            print(result)
 
 
 def _generate_analysis_code(remote_paths: List[tuple[str, str]]) -> str:
