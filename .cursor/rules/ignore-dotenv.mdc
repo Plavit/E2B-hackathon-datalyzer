@@ -1,0 +1,7 @@
+---
+description: Do not touch .env
+globs: .env
+alwaysApply: false
+---
+
+DO NOT TOUCH `.env`. It's not for you.
