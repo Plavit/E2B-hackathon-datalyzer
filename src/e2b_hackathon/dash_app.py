@@ -27,6 +27,9 @@ from openai import OpenAI
 
 from e2b_hackathon.pickle_analyzer import analyze_pickle_files
 
+# Import the execute_code_with_data function from our new module
+from e2b_hackathon.execute_code_with_data import execute_code_with_data
+
 # Initialize the Dash app
 app = dash.Dash(
     __name__,
@@ -275,141 +278,6 @@ layout = dbc.Container(
 
 # Set the layout
 app.layout = layout  # type: ignore
-
-
-def execute_analysis_code(code, data_paths):
-    """
-    Execute the generated analysis code in an E2B sandbox
-
-    Args:
-        code: Python code to execute
-        data_paths: Dictionary of data file paths
-
-    Returns:
-        Dictionary with execution results
-    """
-    # This would be implemented with the E2B API
-    return {
-        "message": "Analysis would be executed securely in an E2B sandbox.",
-        "sandbox_status": "not_implemented",
-    }
-
-
-# Add CSS styles
-app.index_string = """
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>Enhanced Data Analysis Platform</title>
-        {%favicon%}
-        {%css%}
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                margin: 0;
-                background-color: #f7f7f7;
-                color: #333;
-            }
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-            }
-            .app-header {
-                margin-bottom: 30px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid #ddd;
-            }
-            .app-title {
-                margin: 0;
-                color: #2c3e50;
-            }
-            .app-description {
-                color: #7f8c8d;
-                margin-top: 5px;
-            }
-            .content-container {
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-            }
-            .upload-section {
-                background-color: white;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .results-section {
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-            }
-            .results-container {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-            }
-            .result-panel, .correlation-section, .ai-plan-section, .ai-results-section {
-                background-color: white;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .button-primary {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 14px;
-            }
-            .button-primary:hover {
-                background-color: #2980b9;
-            }
-            .file-analysis {
-                margin-bottom: 20px;
-                padding: 15px;
-                border: 1px solid #eee;
-                border-radius: 4px;
-            }
-            .error-message {
-                color: #e74c3c;
-                margin-top: 10px;
-            }
-            h3 {
-                margin-top: 0;
-                color: #2c3e50;
-            }
-            pre {
-                background-color: #f8f9fa;
-                padding: 10px;
-                border-radius: 4px;
-                overflow-x: auto;
-            }
-            .upload-link {
-                color: #3498db;
-                text-decoration: underline;
-                cursor: pointer;
-            }
-            @media (max-width: 768px) {
-                .results-container {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-"""
 
 
 def save_uploaded_files(content, filename, file_type="data"):
@@ -1507,8 +1375,9 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
     Output("ai-results-output", "children"),
     Input("execute-code-button", "n_clicks"),
     State("ai-plan-store", "data"),
+    State("data-store", "data"),
 )
-def update_execution_results(n_clicks, plan_data):
+def update_execution_results(n_clicks, plan_data, data_store):
     """
     Callback for executing the generated code in E2B sandbox.
     Returns:
@@ -1523,24 +1392,214 @@ def update_execution_results(n_clicks, plan_data):
         return html.Div("Execute the generated code to see results here.")
 
     try:
-        # This would be the actual E2B sandbox execution
-        # For now, just return a placeholder
-        return dbc.Card(
-            [
-                dbc.CardHeader(html.H5("Sandbox Execution Results", className="mb-0")),
-                dbc.CardBody(
+        log.info("Executing analysis code in E2B sandbox")
+
+        # Get the code to execute
+        analysis_code = plan_data["analysis_code"]
+
+        # Get data file paths
+        data_paths = {}
+        if data_store:
+            for filename, file_info in data_store.items():
+                if "Path" in file_info:
+                    data_paths[filename] = file_info["Path"]
+
+        # Execute the code using our new function
+        execution_results = execute_code_with_data(analysis_code, data_paths)
+
+        output_components = []
+
+        # Add execution status alert
+        status_color = (
+            "success" if execution_results.get("status") == "success" else "danger"
+        )
+        output_components.append(
+            dbc.Alert(
+                [
+                    html.H5(
+                        f"Execution {'Successful' if status_color == 'success' else 'Failed'}",
+                        className="alert-heading",
+                    ),
+                    html.P(
+                        f"Executed at: {execution_results.get('timestamp', 'Unknown')}"
+                    ),
+                ],
+                color=status_color,
+                className="mb-3",
+            )
+        )
+
+        # Display any error
+        if execution_results.get("error"):
+            output_components.append(
+                dbc.Card(
                     [
-                        dbc.Alert(
-                            "This feature will execute the generated code in an E2B sandbox.",
-                            color="info",
+                        dbc.CardHeader(
+                            html.H5("Execution Error", className="text-danger mb-0")
                         ),
-                        html.P(
-                            "Implementation in progress - this would run your code securely."
+                        dbc.CardBody(
+                            [
+                                html.Pre(
+                                    execution_results.get("error", "Unknown error"),
+                                    style={
+                                        "backgroundColor": "#f8f9fa",
+                                        "padding": "10px",
+                                        "borderRadius": "5px",
+                                        "color": "#dc3545",
+                                    },
+                                ),
+                                html.Hr(),
+                                html.Strong("Traceback:"),
+                                html.Pre(
+                                    execution_results.get(
+                                        "traceback", "No traceback available"
+                                    ),
+                                    style={
+                                        "backgroundColor": "#f8f9fa",
+                                        "padding": "10px",
+                                        "borderRadius": "5px",
+                                        "maxHeight": "300px",
+                                        "overflowY": "auto",
+                                        "fontSize": "12px",
+                                        "color": "#6c757d",
+                                    },
+                                ),
+                            ]
                         ),
-                        html.Hr(),
-                        html.Strong("Code executed:"),
+                    ],
+                    className="mb-4",
+                    color="danger",
+                    outline=True,
+                )
+            )
+
+        # Display plots if any
+        plots = execution_results.get("plots", [])
+        if plots:
+            plot_items = []
+
+            for i, plot_data in enumerate(plots):
+                plot_items.append(
+                    dbc.Col(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader(f"Plot {i + 1}"),
+                                dbc.CardBody(
+                                    html.Img(
+                                        src=f"data:image/png;base64,{plot_data}",
+                                        style={"width": "100%"},
+                                    )
+                                ),
+                            ],
+                            className="mb-3",
+                        ),
+                        md=6,
+                    )
+                )
+
+            output_components.append(
+                html.Div(
+                    [
+                        html.H4("Generated Plots", className="mb-3"),
+                        dbc.Row(plot_items),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        # Display tables if any
+        tables = execution_results.get("tables", [])
+        if tables:
+            table_items = []
+
+            for i, table_data in enumerate(tables):
+                try:
+                    # Convert table data to HTML table
+                    df = pd.DataFrame(table_data)
+                    html_table = dbc.Table.from_dataframe(
+                        df, striped=True, bordered=True, hover=True, responsive=True
+                    )
+
+                    table_items.append(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader(f"Table {i + 1}"),
+                                dbc.CardBody(html_table),
+                            ],
+                            className="mb-3",
+                        )
+                    )
+                except Exception as e:
+                    log.error(f"Error converting table data to HTML: {str(e)}")
+
+            if table_items:
+                output_components.append(
+                    html.Div(
+                        [
+                            html.H4("Generated Tables", className="mb-3"),
+                            html.Div(table_items),
+                        ],
+                        className="mb-4",
+                    )
+                )
+
+        # Display stdout
+        if execution_results.get("stdout"):
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H5("Execution Output", className="mb-0")),
+                        dbc.CardBody(
+                            html.Pre(
+                                execution_results.get("stdout", "No output"),
+                                style={
+                                    "backgroundColor": "#f8f9fa",
+                                    "padding": "10px",
+                                    "borderRadius": "5px",
+                                    "maxHeight": "400px",
+                                    "overflowY": "auto",
+                                },
+                            )
+                        ),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        # Display stderr if any
+        if execution_results.get("stderr"):
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H5("Standard Error", className="mb-0")),
+                        dbc.CardBody(
+                            html.Pre(
+                                execution_results.get("stderr", "No errors"),
+                                style={
+                                    "backgroundColor": "#f8f9fa",
+                                    "padding": "10px",
+                                    "borderRadius": "5px",
+                                    "maxHeight": "300px",
+                                    "overflowY": "auto",
+                                    "color": "#dc3545",
+                                },
+                            )
+                        ),
+                    ],
+                    className="mb-4",
+                    color="warning",
+                    outline=True,
+                )
+            )
+
+        # Display the executed code
+        output_components.append(
+            dbc.Card(
+                [
+                    dbc.CardHeader(html.H5("Executed Code", className="mb-0")),
+                    dbc.CardBody(
                         html.Pre(
-                            plan_data["analysis_code"],
+                            analysis_code,
                             style={
                                 "backgroundColor": "#f8f9fa",
                                 "padding": "10px",
@@ -1548,12 +1607,14 @@ def update_execution_results(n_clicks, plan_data):
                                 "maxHeight": "300px",
                                 "overflowY": "auto",
                             },
-                        ),
-                    ]
-                ),
-            ],
-            className="mb-4",
+                        )
+                    ),
+                ],
+                className="mb-4",
+            )
         )
+
+        return html.Div(output_components)
 
     except Exception as e:
         log.error("Error executing code in sandbox", error=str(e))
@@ -1652,7 +1713,7 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                     object_types = [
                         obj.get("Object Type", "Unknown") for obj in analyzed_objects
                     ]
-                    type_counts = {}
+                    type_counts: Dict[str, int] = {}
                     for obj_type in object_types:
                         if obj_type in type_counts:
                             type_counts[obj_type] += 1
@@ -2185,7 +2246,7 @@ def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
 
         if object_info:
             # Add an index to identify the object
-            object_info["Object Index"] = i
+            object_info["Object Index"] = str(i)
             analyzed_objects.append(object_info)
             log.debug(f"Added object #{i} with {len(object_info)} properties")
 
