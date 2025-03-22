@@ -2,11 +2,10 @@ import os
 import sys
 import json
 import base64
-import pickle
 import traceback
 import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional
 import io
 
 import dash
@@ -20,9 +19,6 @@ import pandas as pd
 import numpy as np
 
 # For handling different file types
-from PyPDF2 import PdfReader
-from docx import Document
-import openai
 from openai import OpenAI
 
 from e2b_hackathon.pickle_analyzer import analyze_pickle_files
@@ -75,21 +71,22 @@ layout = dbc.Container(
                                 dbc.CardBody(
                                     [
                                         html.H5(
-                                            "Upload Data Files", className="card-title"
+                                            "Unified File Upload",
+                                            className="card-title",
                                         ),
                                         html.P(
-                                            "Upload data files (.pkl, .pickle, .csv, .parquet) for analysis",
+                                            "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
                                             className="card-text text-muted",
                                         ),
                                         dcc.Upload(
-                                            id="upload-data",
+                                            id="unified-upload",
                                             children=html.Div(
                                                 [
                                                     html.I(
                                                         className="fas fa-upload me-2"
                                                     ),
                                                     "Drag and Drop or ",
-                                                    html.A("Select Data Files"),
+                                                    html.A("Select Files"),
                                                 ]
                                             ),
                                             style={
@@ -114,53 +111,7 @@ layout = dbc.Container(
                             className="mb-4",
                         ),
                     ],
-                    md=6,
-                ),
-                dbc.Col(
-                    [
-                        dbc.Card(
-                            [
-                                dbc.CardBody(
-                                    [
-                                        html.H5(
-                                            "Upload Context Files",
-                                            className="card-title",
-                                        ),
-                                        html.P(
-                                            "Upload text, PDF, or Word files to provide context",
-                                            className="card-text text-muted",
-                                        ),
-                                        dcc.Upload(
-                                            id="upload-context",
-                                            children=html.Div(
-                                                [
-                                                    html.I(
-                                                        className="fas fa-upload me-2"
-                                                    ),
-                                                    "Drag and Drop or ",
-                                                    html.A("Select Context Files"),
-                                                ]
-                                            ),
-                                            style={
-                                                "width": "100%",
-                                                "height": "60px",
-                                                "lineHeight": "60px",
-                                                "borderWidth": "1px",
-                                                "borderStyle": "dashed",
-                                                "borderRadius": "5px",
-                                                "textAlign": "center",
-                                                "margin": "10px 0",
-                                            },
-                                            multiple=True,
-                                            accept=".txt, .pdf, .docx, .doc",
-                                        ),
-                                    ]
-                                )
-                            ],
-                            className="mb-4",
-                        ),
-                    ],
-                    md=6,
+                    width=12,
                 ),
             ]
         ),
@@ -216,6 +167,11 @@ layout = dbc.Container(
                             id="analyze-correlations-button",
                             className="btn btn-primary mb-3",
                         ),
+                        dcc.Loading(
+                            id="loading-correlation",
+                            type="circle",
+                            children=html.Div(id="correlation-loading-output"),
+                        ),
                         html.Div(id="correlation-output"),
                     ],
                     width=12,
@@ -232,6 +188,11 @@ layout = dbc.Container(
                             "Generate Analysis Plan",
                             id="generate-plan-button",
                             className="btn btn-primary mb-3",
+                        ),
+                        dcc.Loading(
+                            id="loading-plan",
+                            type="circle",
+                            children=html.Div(id="plan-loading-output"),
                         ),
                         html.Div(id="ai-plan-output"),
                     ],
@@ -293,7 +254,16 @@ def save_uploaded_files(content, filename, file_type="data"):
         Path to the saved file
     """
     valid_extensions = {
-        "data": [".pkl", ".pickle", ".csv", ".parquet", ".xls", ".xlsx"],
+        "data": [
+            ".pkl",
+            ".pickle",
+            ".csv",
+            ".parquet",
+            ".xls",
+            ".xlsx",
+            ".json",
+            ".geojson",
+        ],
         "context": [".txt", ".pdf", ".docx", ".doc", ".md"],
     }
 
@@ -754,6 +724,207 @@ def get_additional_info_component(
             ]
         )
 
+    elif file_type == "JSON" or file_type == "GeoJSON":
+        # Information for JSON/GeoJSON files
+        structure = file_info.get("Structure", "Unknown")
+
+        # Create list items with basic info
+        json_info_items = []
+
+        if structure == "Dictionary":
+            # For dictionary structure
+            keys_count = file_info.get("Number of keys", "Unknown")
+            top_keys = file_info.get("Top-level keys", [])
+
+            json_info_items.extend(
+                [
+                    dbc.ListGroupItem(
+                        [html.Strong("Structure: "), html.Span(structure)]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Number of keys: "), html.Span(str(keys_count))]
+                    ),
+                    dbc.ListGroupItem(
+                        [
+                            html.Strong("Top-level keys: "),
+                            html.Span(", ".join(str(k) for k in top_keys)),
+                        ]
+                    ),
+                ]
+            )
+
+            # Add GeoJSON specific information if available
+            if "GeoJSON Type" in file_info:
+                json_type = file_info.get("GeoJSON Type", "")
+                json_info_items.append(
+                    dbc.ListGroupItem(
+                        [html.Strong("GeoJSON Type: "), html.Span(json_type)]
+                    )
+                )
+
+                if "Features Count" in file_info:
+                    features_count = file_info.get("Features Count", 0)
+                    json_info_items.append(
+                        dbc.ListGroupItem(
+                            [
+                                html.Strong("Features Count: "),
+                                html.Span(str(features_count)),
+                            ]
+                        )
+                    )
+
+                if "Geometry Type" in file_info:
+                    geometry_type = file_info.get("Geometry Type", "Unknown")
+                    json_info_items.append(
+                        dbc.ListGroupItem(
+                            [html.Strong("Geometry Type: "), html.Span(geometry_type)]
+                        )
+                    )
+
+                if "Property Keys" in file_info:
+                    property_keys = file_info.get("Property Keys", [])
+                    if isinstance(property_keys, list):
+                        property_keys_str = ", ".join(
+                            str(k) for k in property_keys[:10]
+                        )
+                        if len(property_keys) > 10:
+                            property_keys_str += "... (and more)"
+                        json_info_items.append(
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Property Keys: "),
+                                    html.Span(property_keys_str),
+                                ]
+                            )
+                        )
+                    else:
+                        json_info_items.append(
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Property Keys: "),
+                                    html.Span(str(property_keys)),
+                                ]
+                            )
+                        )
+
+        elif structure == "List":
+            # For list structure
+            items_count = file_info.get("Number of items", 0)
+            item_type = file_info.get("Item Type", "Unknown")
+
+            json_info_items.extend(
+                [
+                    dbc.ListGroupItem(
+                        [html.Strong("Structure: "), html.Span(structure)]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Number of items: "), html.Span(str(items_count))]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Item Type: "), html.Span(item_type)]
+                    ),
+                ]
+            )
+
+            if item_type == "Dictionary" and "Sample Item Keys" in file_info:
+                sample_keys = file_info.get("Sample Item Keys", [])
+                sample_keys_str = ", ".join(str(k) for k in sample_keys[:10])
+                if len(sample_keys) > 10:
+                    sample_keys_str += "... (and more)"
+                json_info_items.append(
+                    dbc.ListGroupItem(
+                        [html.Strong("Sample Item Keys: "), html.Span(sample_keys_str)]
+                    )
+                )
+
+        components.extend(
+            [
+                html.H6(f"{file_type} Details", className="mt-3"),
+                dbc.ListGroup(json_info_items, className="mb-3"),
+            ]
+        )
+
+        # If we have a DataFrame representation, show it
+        df_key = (
+            "Properties DataFrame"
+            if file_type == "GeoJSON"
+            else "DataFrame Representation"
+        )
+        if df_key in file_info:
+            df_info = file_info[df_key]
+
+            components.extend(
+                [
+                    html.H6(f"{file_type} as DataFrame", className="mt-3"),
+                    dbc.ListGroup(
+                        [
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Shape: "),
+                                    html.Span(df_info.get("Shape", "Unknown")),
+                                ]
+                            ),
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Columns: "),
+                                    html.Span(
+                                        ", ".join(
+                                            str(c)
+                                            for c in df_info.get("Columns", [])[:10]
+                                        )
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                ]
+            )
+
+            # Show sample data if available
+            if "Sample Data" in df_info:
+                components.append(html.H6("Sample Data:", className="mt-3"))
+                sample_data = df_info.get("Sample Data", [])
+
+                if (
+                    sample_data
+                    and isinstance(sample_data, list)
+                    and len(sample_data) > 0
+                ):
+                    # Create a table from the sample data
+                    if isinstance(sample_data[0], dict):
+                        columns = list(sample_data[0].keys())
+
+                        # Table header
+                        table_header = [html.Tr([html.Th(col) for col in columns])]
+
+                        # Table rows
+                        table_body = []
+                        for row in sample_data:
+                            table_body.append(
+                                html.Tr(
+                                    [html.Td(str(row.get(col, ""))) for col in columns]
+                                )
+                            )
+
+                        components.append(
+                            dbc.Table(
+                                [html.Thead(table_header), html.Tbody(table_body)],
+                                bordered=True,
+                                hover=True,
+                                responsive=True,
+                                size="sm",
+                                className="mb-3",
+                            )
+                        )
+                    else:
+                        components.append(
+                            html.Pre(
+                                str(sample_data),
+                                style={"maxHeight": "200px", "overflowY": "auto"},
+                            )
+                        )
+
     # Add collapsible card for the raw output
     unique_id = hash(f"{file_type}{str(hash(str(file_info)))}")
     components.append(
@@ -807,20 +978,54 @@ def toggle_object_collapse(n_clicks, is_open):
     return is_open
 
 
+# Define file type based on extension
+def determine_file_type(filename):
+    """
+    Determine if a file is data or context based on its extension.
+
+    Args:
+        filename: The name of the file
+
+    Returns:
+        str: "data" or "context"
+    """
+    # Get the file extension
+    ext = os.path.splitext(filename)[1].lower()
+
+    # Define data file extensions
+    data_extensions = [".pkl", ".pickle", ".csv", ".parquet", ".json", ".geojson"]
+
+    # Define context file extensions
+    context_extensions = [".txt", ".pdf", ".docx", ".doc"]
+
+    if ext in data_extensions:
+        return "data"
+    elif ext in context_extensions:
+        return "context"
+    else:
+        # Default to data for unknown extensions
+        return "data"
+
+
 @callback(
     Output("data-output", "children"),
     Output("loading-output", "children"),
     Output("files-being-analyzed", "children"),
     Output("error-message", "children"),
     Output("data-store", "data"),
-    Input("upload-data", "contents"),
-    Input("upload-data", "filename"),
+    Output("context-output", "children"),
+    Output("context-store", "data"),
+    Input("unified-upload", "contents"),
+    Input("unified-upload", "filename"),
     State("data-store", "data"),
+    State("context-store", "data"),
 )
-def update_data_output(data_contents, data_filenames, stored_data_results):
+def update_unified_output(
+    contents, filenames, stored_data_results, stored_context_results
+):
     """
-    Callback for data file upload.
-    Files are automatically analyzed upon upload.
+    Callback for unified file upload.
+    Files are automatically categorized and analyzed upon upload.
 
     Returns:
         - Data output component
@@ -828,37 +1033,84 @@ def update_data_output(data_contents, data_filenames, stored_data_results):
         - Files being analyzed text
         - Error message
         - Stored data results
+        - Context output component
+        - Stored context results
     """
-    if data_contents is None or data_filenames is None:
+    if contents is None or filenames is None:
         # No file uploaded yet
-        return html.Div(), "", "", "", {}
+        return (
+            html.Div(),
+            "",
+            "",
+            "",
+            {},
+            html.Div("Upload context files to see extracted text."),
+            {},
+        )
 
-    # Initialize data store if not exists
+    # Initialize data stores if not exists
     if stored_data_results is None:
         stored_data_results = {}
+    if stored_context_results is None:
+        stored_context_results = {}
 
     # Check if the callback was triggered by a file upload
     ctx = dash.callback_context
     if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
-        return html.Div(), "", "", "", stored_data_results
+        return (
+            html.Div(),
+            "",
+            "",
+            "",
+            stored_data_results,
+            html.Div("Upload context files to see extracted text."),
+            stored_context_results,
+        )
 
     # Get the trigger
     changed_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    if changed_id != "upload-data":
-        return html.Div(), "", "", "", stored_data_results
+    if changed_id != "unified-upload":
+        return (
+            html.Div(),
+            "",
+            "",
+            "",
+            stored_data_results,
+            html.Div("Upload context files to see extracted text."),
+            stored_context_results,
+        )
+
+    # Sort files by type
+    data_contents = []
+    data_filenames = []
+    context_contents = []
+    context_filenames = []
+
+    for content, filename in zip(contents, filenames):
+        file_type = determine_file_type(filename)
+        if file_type == "data":
+            data_contents.append(content)
+            data_filenames.append(filename)
+        else:  # context
+            context_contents.append(content)
+            context_filenames.append(filename)
+
+    # Process data files
+    data_output_components = []
+    new_data_results = dict(
+        stored_data_results
+    )  # Make a copy to preserve existing results
 
     # Show the files being analyzed
-    files_display = dbc.Alert(
-        [
-            html.H5("Analyzing Data Files:", className="alert-heading"),
-            html.Ul([html.Li(filename) for filename in data_filenames]),
-        ],
-        color="info",
-    )
-
-    # Process each uploaded file
-    output_components = []
-    new_data_results = {}
+    files_display = ""
+    if data_filenames:
+        files_display = dbc.Alert(
+            [
+                html.H5("Analyzing Data Files:", className="alert-heading"),
+                html.Ul([html.Li(filename) for filename in data_filenames]),
+            ],
+            color="info",
+        )
 
     for content, filename in zip(data_contents, data_filenames):
         if content is None:
@@ -869,12 +1121,10 @@ def update_data_output(data_contents, data_filenames, stored_data_results):
             file_path = save_uploaded_files(content, filename, "data")
 
             # Analyze file
-            # All pickle files are analyzed securely by default
-            file_ext = os.path.splitext(filename)[1].lower()
             result = analyze_data_file(file_path)
 
             if "error" in result:
-                output_components.append(
+                data_output_components.append(
                     dbc.Alert(
                         [
                             html.H5(f"Error analyzing {filename}"),
@@ -895,10 +1145,10 @@ def update_data_output(data_contents, data_filenames, stored_data_results):
 
                 # Format analysis results for display
                 file_card = create_file_summary_card(filename, result)
-                output_components.append(file_card)
+                data_output_components.append(file_card)
 
         except Exception as e:
-            output_components.append(
+            data_output_components.append(
                 dbc.Alert(
                     [
                         html.H5(f"Error processing {filename}"),
@@ -912,56 +1162,11 @@ def update_data_output(data_contents, data_filenames, stored_data_results):
                 "Exception while processing data file", error=str(e), filename=filename
             )
 
-    if not output_components:
-        return html.Div("No valid data files uploaded."), "", "", "", {}
-
-    # Wrap all cards in a row with responsive columns
-    wrapped_output = dbc.Row(
-        [dbc.Col(component, md=6, lg=4) for component in output_components]
-    )
-
-    return wrapped_output, "", "", "", new_data_results
-
-
-@callback(
-    Output("context-output", "children"),
-    Output("context-store", "data"),
-    Input("upload-context", "contents"),
-    Input("upload-context", "filename"),
-    State("context-store", "data"),
-)
-def update_context_output(context_contents, context_filenames, stored_context_results):
-    """
-    Callback for context file upload.
-    Returns:
-        - Context output component
-        - Stored context results
-    """
-    if context_contents is None or context_filenames is None:
-        # No file uploaded yet
-        return html.Div("Upload context files to see extracted text."), {}
-
-    # Initialize data store if not exists
-    if stored_context_results is None:
-        stored_context_results = {}
-
-    # Check if the callback was triggered by a file upload
-    ctx = dash.callback_context
-    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
-        return html.Div(
-            "Upload context files to see extracted text."
-        ), stored_context_results
-
-    # Get the uploaded file(s)
-    changed_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    if changed_id != "upload-context":
-        return html.Div(
-            "Upload context files to see extracted text."
-        ), stored_context_results
-
-    # Process the uploaded files
-    output_components = []
-    new_context_results = stored_context_results.copy()
+    # Process context files
+    context_output_components = []
+    new_context_results = dict(
+        stored_context_results
+    )  # Make a copy to preserve existing results
 
     for content, filename in zip(context_contents, context_filenames):
         if content is None:
@@ -971,81 +1176,49 @@ def update_context_output(context_contents, context_filenames, stored_context_re
         try:
             file_path = save_uploaded_files(content, filename, "context")
 
-            # Extract text from file
+            # Extract text from context file
             result = extract_text_from_file(file_path)
+            text_content = result.get("text", "")
 
-            if "error" in result:
-                output_components.append(
-                    dbc.Alert(
-                        [
-                            html.H5(f"Error processing {filename}"),
-                            html.P(result["error"]),
-                        ],
-                        color="danger",
-                        className="mb-3",
-                    )
-                )
-                log.error(
-                    "Error extracting text from file",
-                    error=result["error"],
-                    filename=filename,
-                )
-            else:
-                # Store text content
-                new_context_results[filename] = result.get("Text", "")
+            # Store the extracted text
+            new_context_results[filename] = text_content
 
-                # Display extracted text
-                output_components.append(
-                    dbc.Card(
+            # Create a card to display file information and preview
+            context_card = dbc.Card(
+                [
+                    dbc.CardHeader(
                         [
-                            dbc.CardHeader(html.H5(filename, className="mb-0")),
-                            dbc.CardBody(
+                            html.H5(
                                 [
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                [
-                                                    html.Strong("File Type: "),
-                                                    html.Span(
-                                                        result.get("Type", "Unknown")
-                                                    ),
-                                                ],
-                                                md=6,
-                                            ),
-                                            dbc.Col(
-                                                [
-                                                    html.Strong("File Size: "),
-                                                    html.Span(
-                                                        result.get("Size", "Unknown")
-                                                    ),
-                                                ],
-                                                md=6,
-                                            ),
-                                        ]
-                                    ),
-                                    html.Hr(),
-                                    html.H6("Extracted Text:"),
-                                    dbc.Card(
-                                        dbc.CardBody(
-                                            html.Pre(
-                                                result.get("Text", "No text extracted"),
-                                                style={
-                                                    "whiteSpace": "pre-wrap",
-                                                    "maxHeight": "300px",
-                                                    "overflowY": "auto",
-                                                },
-                                            )
-                                        ),
-                                        className="bg-light mt-2",
-                                    ),
-                                ]
+                                    html.I(className="fas fa-file-alt me-2"),
+                                    filename,
+                                ],
+                                className="mb-0",
+                            )
+                        ]
+                    ),
+                    dbc.CardBody(
+                        [
+                            html.P("Text Preview:"),
+                            dbc.Card(
+                                dbc.CardBody(
+                                    html.P(
+                                        text_content[:500] + "..."
+                                        if len(text_content) > 500
+                                        else text_content
+                                    )
+                                ),
+                                className="bg-light",
                             ),
-                        ],
-                        className="mb-3",
-                    )
-                )
+                        ]
+                    ),
+                ],
+                className="mb-3",
+            )
+            context_output_components.append(context_card)
+
         except Exception as e:
-            output_components.append(
+            context_output_components.append(
                 dbc.Alert(
                     [
                         html.H5(f"Error processing {filename}"),
@@ -1061,23 +1234,112 @@ def update_context_output(context_contents, context_filenames, stored_context_re
                 filename=filename,
             )
 
-    if not output_components:
-        return html.Div("No valid context files uploaded."), new_context_results
+    # Format data output
+    data_output = html.Div("No valid data files uploaded.")
+    if data_output_components:
+        data_output = dbc.Row(
+            [dbc.Col(component, md=6, lg=4) for component in data_output_components]
+        )
 
-    # Wrap all cards in a container
-    wrapped_output = html.Div(
-        [
-            html.H3("Context Files", className="mb-3"),
-            dbc.Row([dbc.Col(component, md=6) for component in output_components]),
-        ]
+    # Format context output
+    context_output = html.Div("Upload context files to see extracted text.")
+    if context_output_components:
+        context_output = dbc.Row(
+            [dbc.Col(component, md=6) for component in context_output_components]
+        )
+
+    return (
+        data_output,
+        "",
+        files_display,
+        "",
+        new_data_results,
+        context_output,
+        new_context_results,
     )
 
-    return wrapped_output, new_context_results
+
+@callback(
+    Output("data-output", "children", allow_duplicate=True),
+    Output("loading-output", "children", allow_duplicate=True),
+    Output("files-being-analyzed", "children", allow_duplicate=True),
+    Output("error-message", "children", allow_duplicate=True),
+    Output("data-store", "data", allow_duplicate=True),
+    Input("unified-upload", "contents"),
+    Input("unified-upload", "filename"),
+    State("data-store", "data"),
+    prevent_initial_call=True,
+)
+def update_data_output(data_contents, data_filenames, stored_data_results):
+    """
+    Callback for data file upload (compatibility).
+    """
+    if data_contents is None or data_filenames is None:
+        # No file uploaded yet
+        return html.Div(), "", "", "", {}
+
+    # Initialize data store if not exists
+    if stored_data_results is None:
+        stored_data_results = {}
+
+    # Filter to only data files
+    data_contents_filtered = []
+    data_filenames_filtered = []
+
+    for content, filename in zip(data_contents, data_filenames):
+        if determine_file_type(filename) == "data":
+            data_contents_filtered.append(content)
+            data_filenames_filtered.append(filename)
+
+    # The rest of your existing function here...
+    # ... (continue with original implementation using data_contents_filtered and data_filenames_filtered)
+
+    # Placeholder return - this should be updated with actual implementation
+    return html.Div(), "", "", "", stored_data_results
+
+
+@callback(
+    Output("context-output", "children", allow_duplicate=True),
+    Output("context-store", "data", allow_duplicate=True),
+    Input("unified-upload", "contents"),
+    Input("unified-upload", "filename"),
+    State("context-store", "data"),
+    prevent_initial_call=True,
+)
+def update_context_output(context_contents, context_filenames, stored_context_results):
+    """
+    Callback for context file upload (compatibility).
+    """
+    if context_contents is None or context_filenames is None:
+        # No file uploaded yet
+        return html.Div("Upload context files to see extracted text."), {}
+
+    # Initialize data store if not exists
+    if stored_context_results is None:
+        stored_context_results = {}
+
+    # Filter to only context files
+    context_contents_filtered = []
+    context_filenames_filtered = []
+
+    for content, filename in zip(context_contents, context_filenames):
+        if determine_file_type(filename) == "context":
+            context_contents_filtered.append(content)
+            context_filenames_filtered.append(filename)
+
+    # The rest of your existing function here...
+    # ... (continue with original implementation using context_contents_filtered and context_filenames_filtered)
+
+    # Placeholder return - this should be updated with actual implementation
+    return html.Div(
+        "Upload context files to see extracted text."
+    ), stored_context_results
 
 
 @callback(
     Output("correlation-output", "children"),
     Output("correlation-store", "data"),
+    Output("correlation-loading-output", "children"),
     Input("analyze-correlations-button", "n_clicks"),
     State("data-store", "data"),
 )
@@ -1087,32 +1349,68 @@ def update_correlation_analysis(n_clicks, data_results):
     Returns:
         - Correlation output component
         - Correlation results data
+        - Loading output (for the spinner)
     """
     # Check if callback was triggered
     if n_clicks is None or n_clicks == 0 or not data_results:
-        return html.Div(
-            "Click 'Analyze Correlations' to find connections between your data files."
-        ), {}
+        log.debug(
+            "Correlation analysis not triggered",
+            n_clicks=n_clicks,
+            has_data=bool(data_results),
+        )
+        return (
+            html.Div(
+                "Click 'Analyze Correlations' to find connections between your data files."
+            ),
+            {},
+            "",
+        )
 
     # Check if we have data results
     if not data_results or len(data_results) < 2:
-        return dbc.Alert(
-            "Upload at least two data files to analyze correlations.", color="warning"
-        ), {}
+        log.warning(
+            "Not enough data files for correlation analysis UI",
+            file_count=len(data_results) if data_results else 0,
+        )
+        return (
+            dbc.Alert(
+                "Upload at least two data files to analyze correlations.",
+                color="warning",
+            ),
+            {},
+            "",
+        )
 
     try:
+        log.info(
+            "Starting correlation analysis UI update", data_file_count=len(data_results)
+        )
         # Find correlations
         correlation_results = correlate_data_files(data_results)
 
+        log.info(
+            "Processing correlation results for UI display",
+            keys=list(correlation_results.keys()),
+            has_error="error" in correlation_results,
+            has_message="message" in correlation_results,
+        )
+
         if "error" in correlation_results:
-            return dbc.Alert(correlation_results["error"], color="warning"), {}
+            log.warning(
+                "Error in correlation results", error=correlation_results["error"]
+            )
+            return dbc.Alert(correlation_results["error"], color="warning"), {}, ""
 
         # Create output components for correlations
         output_components = []
+        # Track if any correlations were found
+        found_correlations = False
 
         # Shared columns
         shared_cols = correlation_results.get("shared_columns", {})
         if shared_cols:
+            found_correlations = True
+            log.info("Processing shared columns for UI", count=len(shared_cols))
             shared_cols_items = []
             for col, files in shared_cols.items():
                 shared_cols_items.append(
@@ -1132,14 +1430,12 @@ def update_correlation_analysis(n_clicks, data_results):
                     className="mb-4",
                 )
             )
-        else:
-            output_components.append(
-                dbc.Alert("No shared columns found between files.", color="info")
-            )
 
         # Potential join keys
         joins = correlation_results.get("potential_joins", [])
         if joins:
+            found_correlations = True
+            log.info("Processing potential join keys for UI", count=len(joins))
             joins_items = []
             for join in joins:
                 joins_items.append(
@@ -1167,6 +1463,8 @@ def update_correlation_analysis(n_clicks, data_results):
         # Similar sized files
         similar_sizes = correlation_results.get("similar_sizes", [])
         if similar_sizes:
+            found_correlations = True
+            log.info("Processing similar sized files for UI", count=len(similar_sizes))
             size_items = []
             for size_info in similar_sizes:
                 size_items.append(
@@ -1198,6 +1496,8 @@ def update_correlation_analysis(n_clicks, data_results):
         # Common data types
         common_types = correlation_results.get("common_data_types", {})
         if common_types:
+            found_correlations = True
+            log.info("Processing common data types for UI", count=len(common_types))
             types_components = []
 
             for files_key, types in common_types.items():
@@ -1227,23 +1527,221 @@ def update_correlation_analysis(n_clicks, data_results):
                 )
             )
 
-        return html.Div(output_components), correlation_results
+        # LLM-suggested join keys (NEW SECTION)
+        llm_joins = correlation_results.get("llm_suggested_joins", [])
+        if llm_joins:
+            found_correlations = True
+            log.info(
+                "Processing LLM-suggested join keys for UI", raw_count=len(llm_joins)
+            )
+            # Sort by confidence score in descending order
+            llm_joins = sorted(
+                llm_joins, key=lambda x: x.get("confidence", 0), reverse=True
+            )
+            log.debug(
+                "Sorted LLM joins",
+                first_confidence=llm_joins[0].get("confidence", 0)
+                if llm_joins
+                else "N/A",
+            )
+
+            llm_joins_items = []
+            for join in llm_joins:
+                # Format the confidence as a percentage
+                confidence = join.get("confidence", 0)
+                confidence_str = f"{confidence * 100:.0f}%" if confidence else "Unknown"
+
+                # Log simplified information about this join
+                log.debug(f"Processing LLM join with confidence {confidence_str}")
+
+                # Create badge with appropriate color based on confidence
+                if confidence >= 0.7:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="success", className="me-1"
+                    )
+                elif confidence >= 0.4:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="warning", className="me-1"
+                    )
+                else:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="secondary", className="me-1"
+                    )
+
+                llm_joins_items.append(
+                    dbc.ListGroupItem(
+                        [
+                            html.Strong(
+                                f"{join.get('source_file', 'Unknown')}:{join.get('source_column', 'Unknown')}"
+                            ),
+                            " ⟷ ",
+                            html.Strong(
+                                f"{join.get('target_file', 'Unknown')}:{join.get('target_column', 'Unknown')}"
+                            ),
+                            html.Br(),
+                            confidence_badge,
+                            html.Span(
+                                join.get("explanation", "No explanation provided"),
+                                className="text-muted small",
+                            ),
+                        ]
+                    )
+                )
+
+            log.info("Created LLM joins UI items", count=len(llm_joins_items))
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            [
+                                html.H5("AI-Suggested Join Keys", className="mb-0"),
+                                html.Small(
+                                    "Based on column names and sample values analysis",
+                                    className="text-muted",
+                                ),
+                            ]
+                        ),
+                        dbc.CardBody(
+                            [dbc.ListGroup(llm_joins_items, className="mb-3")]
+                        ),
+                    ],
+                    className="mb-4 border-primary",  # Highlight this card with a primary border
+                )
+            )
+        elif (
+            "llm_no_joins_found" in correlation_results
+            and correlation_results["llm_no_joins_found"]
+        ):
+            # LLM was called but didn't find any potential join keys
+            # Don't set found_correlations = True here as this isn't a positive correlation finding
+            log.info("LLM found no join keys, displaying informational card")
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            [
+                                html.H5("AI-Suggested Join Keys", className="mb-0"),
+                                html.Small(
+                                    "Based on column names and sample values analysis",
+                                    className="text-muted",
+                                ),
+                            ]
+                        ),
+                        dbc.CardBody(
+                            [
+                                html.P(
+                                    [
+                                        html.I(
+                                            className="fas fa-info-circle me-2 text-info"
+                                        ),
+                                        "No potential join keys were identified by the AI analysis. This could mean:",
+                                    ],
+                                    className="mb-2",
+                                ),
+                                html.Ul(
+                                    [
+                                        html.Li(
+                                            "The datasets may not be directly relatable"
+                                        ),
+                                        html.Li(
+                                            "The column names and sample values don't provide enough context"
+                                        ),
+                                        html.Li(
+                                            "The relationships may be more complex than direct column matches"
+                                        ),
+                                    ],
+                                    className="mb-3",
+                                ),
+                                html.P(
+                                    "Consider examining the data manually or providing more context files to help identify potential relationships.",
+                                    className="small text-muted",
+                                ),
+                            ]
+                        ),
+                    ],
+                    className="mb-4 border-info",
+                )
+            )
+        elif "llm_analysis_error" in correlation_results:
+            # Show error if LLM analysis failed
+            log.warning(
+                "LLM analysis error found",
+                error=correlation_results["llm_analysis_error"],
+            )
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H6("AI Join Analysis Error", className="alert-heading"),
+                        html.P(correlation_results["llm_analysis_error"]),
+                    ],
+                    color="warning",
+                    className="mb-4",
+                )
+            )
+
+        # Display a message if no correlations of any kind were found
+        if not found_correlations:
+            log.warning(
+                "No correlations found for display",
+                correlation_keys=list(correlation_results.keys()),
+            )
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H5("No Correlations Found", className="alert-heading"),
+                        html.P(
+                            "No correlations or relationships were found between the uploaded files. This could be because:"
+                        ),
+                        html.Ul(
+                            [
+                                html.Li("The datasets are completely unrelated"),
+                                html.Li(
+                                    "The column names are different and don't share common patterns"
+                                ),
+                                html.Li(
+                                    "The data structures are too dissimilar to identify relationships automatically"
+                                ),
+                            ]
+                        ),
+                        html.P(
+                            "Try adding more context files or examining the data manually to identify potential relationships."
+                        ),
+                    ],
+                    color="info",
+                    className="mb-4",
+                )
+            )
+
+        log.info(
+            "Correlation UI update complete",
+            component_count=len(output_components),
+            found_correlations=found_correlations,
+        )
+
+        # Return with empty loading output to clear spinner
+        return html.Div(output_components), correlation_results, ""
 
     except Exception as e:
         log.error("Error in correlation analysis", error=str(e))
-        return dbc.Alert(
-            [
-                html.H5("Error in Correlation Analysis"),
-                html.P(str(e)),
-                html.Pre(traceback.format_exc()),
-            ],
-            color="danger",
-        ), {}
+        return (
+            dbc.Alert(
+                [
+                    html.H5("Error in Correlation Analysis"),
+                    html.P(str(e)),
+                    html.Pre(traceback.format_exc()),
+                ],
+                color="danger",
+            ),
+            {},
+            "",
+        )
 
 
 @callback(
     Output("ai-plan-output", "children"),
     Output("ai-plan-store", "data"),
+    Output("plan-loading-output", "children"),
     Input("generate-plan-button", "n_clicks"),
     State("data-store", "data"),
     State("context-store", "data"),
@@ -1255,18 +1753,25 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
     Returns:
         - AI plan output component
         - AI plan data
+        - Loading output (for the spinner)
     """
     if n_clicks is None or n_clicks == 0 or not data_results:
-        return html.Div(
-            "Click 'Generate Analysis Plan' to create an AI-powered plan."
-        ), {}
+        return (
+            html.Div("Click 'Generate Analysis Plan' to create an AI-powered plan."),
+            {},
+            "",
+        )
 
     # Check if we have data results
     if not data_results:
-        return dbc.Alert(
-            "Upload data files first before generating an analysis plan.",
-            color="warning",
-        ), {}
+        return (
+            dbc.Alert(
+                "Upload data files first before generating an analysis plan.",
+                color="warning",
+            ),
+            {},
+            "",
+        )
 
     try:
         # Generate analysis plan
@@ -1275,14 +1780,18 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
         )
 
         if "error" in plan_results:
-            return dbc.Alert(
-                [
-                    html.H5("Error Generating Analysis Plan"),
-                    html.P(plan_results["error"]),
-                    html.Pre(plan_results.get("traceback", "")),
-                ],
-                color="danger",
-            ), {}
+            return (
+                dbc.Alert(
+                    [
+                        html.H5("Error Generating Analysis Plan"),
+                        html.P(plan_results["error"]),
+                        html.Pre(plan_results.get("traceback", "")),
+                    ],
+                    color="danger",
+                ),
+                {},
+                "",
+            )
 
         # Create output components for the plan
         output_components = []
@@ -1361,18 +1870,23 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
                 )
             )
 
-        return html.Div(output_components), plan_results
+        # Return with empty loading output to clear spinner
+        return html.Div(output_components), plan_results, ""
 
     except Exception as e:
         log.error("Error generating analysis plan", error=str(e))
-        return dbc.Alert(
-            [
-                html.H5("Error Generating Analysis Plan"),
-                html.P(str(e)),
-                html.Pre(traceback.format_exc()),
-            ],
-            color="danger",
-        ), {}
+        return (
+            dbc.Alert(
+                [
+                    html.H5("Error Generating Analysis Plan"),
+                    html.P(str(e)),
+                    html.Pre(traceback.format_exc()),
+                ],
+                color="danger",
+            ),
+            {},
+            "",
+        )
 
 
 @callback(
@@ -1759,7 +2273,7 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
 
         elif ext == ".csv":
             try:
-                df = pd.read_csv(file_path)
+                df = pd.read_csv(file_path, low_memory=False)
                 file_info.update(analyze_dataframe(df))
                 file_info["Type"] = "DataFrame (CSV)"
                 return file_info
@@ -1792,6 +2306,123 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                 )
                 return {"error": f"Failed to analyze Parquet file: {str(e)}"}
 
+        elif ext in [".json", ".geojson"]:
+            try:
+                with open(file_path, "r") as f:
+                    json_data = json.load(f)
+
+                # Basic information about the JSON file
+                file_info["Type"] = "GeoJSON" if ext == ".geojson" else "JSON"
+
+                # Analyze the structure of the JSON
+                if isinstance(json_data, dict):
+                    file_info["Structure"] = "Dictionary"
+                    file_info["Number of keys"] = len(json_data)
+                    file_info["Top-level keys"] = list(json_data.keys())[
+                        :10
+                    ]  # Limit to first 10 keys
+
+                    # Check for GeoJSON structure
+                    if ext == ".geojson" or "type" in json_data:
+                        json_type = json_data.get("type", "")
+                        file_info["GeoJSON Type"] = json_type
+
+                        # Handle different GeoJSON types
+                        if json_type == "FeatureCollection" and "features" in json_data:
+                            features = json_data["features"]
+                            file_info["Features Count"] = len(features)
+
+                            # Analyze a sample feature
+                            if features and len(features) > 0:
+                                sample_feature = features[0]
+                                if "geometry" in sample_feature:
+                                    file_info["Geometry Type"] = sample_feature[
+                                        "geometry"
+                                    ].get("type", "Unknown")
+
+                                if "properties" in sample_feature:
+                                    props = sample_feature["properties"]
+                                    file_info["Property Keys"] = (
+                                        list(props.keys())
+                                        if isinstance(props, dict)
+                                        else "No properties"
+                                    )
+
+                        elif json_type in ["Feature"]:
+                            if "geometry" in json_data:
+                                file_info["Geometry Type"] = json_data["geometry"].get(
+                                    "type", "Unknown"
+                                )
+
+                            if "properties" in json_data:
+                                props = json_data["properties"]
+                                file_info["Property Keys"] = (
+                                    list(props.keys())
+                                    if isinstance(props, dict)
+                                    else "No properties"
+                                )
+
+                elif isinstance(json_data, list):
+                    file_info["Structure"] = "List"
+                    file_info["Number of items"] = len(json_data)
+
+                    # Analyze the first few items
+                    if json_data:
+                        sample_item = json_data[0]
+                        if isinstance(sample_item, dict):
+                            file_info["Item Type"] = "Dictionary"
+                            if len(json_data) > 0:
+                                file_info["Sample Item Keys"] = list(sample_item.keys())
+                        else:
+                            file_info["Item Type"] = type(sample_item).__name__
+
+                # If it's a structure that can be converted to a DataFrame
+                try:
+                    # For GeoJSON, extract properties as a DataFrame
+                    if (
+                        ext == ".geojson"
+                        and isinstance(json_data, dict)
+                        and "features" in json_data
+                    ):
+                        # Extract properties from features
+                        properties_list = []
+                        for feature in json_data["features"]:
+                            if "properties" in feature and isinstance(
+                                feature["properties"], dict
+                            ):
+                                properties_list.append(feature["properties"])
+
+                        if properties_list:
+                            df = pd.DataFrame(properties_list)
+                            df_info = analyze_dataframe(df)
+                            file_info["Properties DataFrame"] = df_info
+                    # For regular JSON that's a list of dictionaries
+                    elif (
+                        isinstance(json_data, list)
+                        and json_data
+                        and isinstance(json_data[0], dict)
+                    ):
+                        df = pd.DataFrame(json_data)
+                        df_info = analyze_dataframe(df)
+                        file_info["DataFrame Representation"] = df_info
+                except Exception as df_err:
+                    log.warning(
+                        "Failed to convert JSON to DataFrame",
+                        error=str(df_err),
+                        file_path=file_path,
+                    )
+
+                return file_info
+            except Exception as e:
+                log.error(
+                    f"Failed to analyze {'GeoJSON' if ext == '.geojson' else 'JSON'} file",
+                    error=str(e),
+                    file_path=file_path,
+                )
+                return {
+                    "error": f"Failed to analyze {'GeoJSON' if ext == '.geojson' else 'JSON'} file: {str(e)}"
+                }
+
         else:
             return {"error": f"Unsupported file type: {ext}"}
 
@@ -1823,8 +2454,47 @@ def analyze_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         col: int(missing) for col, missing in missing_values.items() if missing > 0
     }
 
-    # Sample data
-    result["Sample Data"] = df.head(5).to_dict(orient="records")
+    # Sample data - Convert DataFrame to JSON-serializable format
+    try:
+        # First convert any Timestamp or datetime objects to strings
+        sample_df = df.head(5).copy()
+
+        # Convert all datetime columns to strings
+        for col in sample_df.select_dtypes(
+            include=["datetime64", "datetime64[ns]"]
+        ).columns:
+            sample_df[col] = sample_df[col].astype(str)
+
+        # For any remaining Timestamp objects or other non-serializable types
+        sample_data = sample_df.to_dict(orient="records")
+
+        # Custom conversion for any remaining non-serializable objects
+        for row in sample_data:
+            for key, value in row.items():
+                # Check for pandas Timestamp
+                if hasattr(value, "timestamp") and callable(
+                    getattr(value, "timestamp")
+                ):
+                    row[key] = str(value)
+                # Handle numpy types
+                elif isinstance(value, (np.integer, np.floating)):
+                    row[key] = (
+                        float(value) if isinstance(value, np.floating) else int(value)
+                    )
+                elif isinstance(value, np.ndarray):
+                    row[key] = value.tolist()
+                # Handle any other non-serializable types
+                elif not isinstance(
+                    value, (str, int, float, bool, list, dict, type(None))
+                ):
+                    row[key] = str(value)
+
+        # Store sample data with consistent key name
+        result["Sample Data"] = sample_data
+    except Exception as e:
+        # If serialization still fails, provide a simplified version
+        log.error(f"Error serializing sample data: {str(e)}")
+        result["Sample Data"] = []
 
     # Column statistics
     column_stats: Dict[str, Dict[str, Any]] = {}
@@ -1854,8 +2524,18 @@ def analyze_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
         ):
             # For string/object columns
             value_counts = df[col].value_counts(dropna=False).head(5).to_dict()
+
+            # Convert any non-serializable keys or values
+            value_counts_serializable = {}
+            for k, v in value_counts.items():
+                # Convert key if it's a Timestamp or other non-serializable type
+                key = str(k) if not isinstance(k, (str, int, float, bool)) else k
+                # Convert value to int (should be a count)
+                val = int(v)
+                value_counts_serializable[key] = val
+
             stats["unique_count"] = df[col].nunique()
-            stats["top_values"] = {str(k): int(v) for k, v in value_counts.items()}
+            stats["top_values"] = value_counts_serializable
 
             column_stats[str(col)] = stats
 
@@ -1879,9 +2559,9 @@ def extract_text_from_file(file_path: str) -> Dict[str, Any]:
     file_size = file_stats.st_size
 
     result: Dict[str, Any] = {
-        "Path": file_path,
-        "Name": file_name,
-        "Size": f"{file_size / 1024:.2f} KB"
+        "path": file_path,
+        "name": file_name,
+        "size": f"{file_size / 1024:.2f} KB"
         if file_size < 1024 * 1024
         else f"{file_size / (1024 * 1024):.2f} MB",
     }
@@ -1896,7 +2576,7 @@ def extract_text_from_file(file_path: str) -> Dict[str, Any]:
         if ext == ".txt":
             with open(file_path, "r", encoding="utf-8") as f:
                 text_content = f.read()
-            result["Type"] = "Text File"
+            result["type"] = "Text File"
 
         elif ext == ".pdf":
             try:
@@ -1906,7 +2586,7 @@ def extract_text_from_file(file_path: str) -> Dict[str, Any]:
                     pdf_reader = PyPDF2.PdfReader(f)
                     for page in pdf_reader.pages:
                         text_content += page.extract_text() + "\n\n"
-                result["Type"] = "PDF File"
+                result["type"] = "PDF File"
             except ImportError:
                 result["error"] = "PyPDF2 library not installed. Unable to process PDF."
                 log.error("PyPDF2 library not installed")
@@ -1918,7 +2598,7 @@ def extract_text_from_file(file_path: str) -> Dict[str, Any]:
                 doc = docx.Document(file_path)
                 for para in doc.paragraphs:
                     text_content += para.text + "\n"
-                result["Type"] = "Word Document"
+                result["type"] = "Word Document"
             except ImportError:
                 result["error"] = (
                     "python-docx library not installed. Unable to process Word document."
@@ -1933,6 +2613,8 @@ def extract_text_from_file(file_path: str) -> Dict[str, Any]:
             text_content = text_content[:1000000] + "... [truncated]"
             result["warning"] = "Text content was truncated due to large size"
 
+        result["text"] = text_content
+        # For backward compatibility
         result["Text"] = text_content
         return result
 
@@ -1952,7 +2634,12 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     Returns:
         Dictionary with correlation results
     """
+    log.info("Argument", arg=data_results)
     if not data_results or len(data_results) < 2:
+        log.warning(
+            "Not enough data files for correlation analysis",
+            count=len(data_results) if data_results else 0,
+        )
         return {"error": "Need at least two data files to find correlations"}
 
     correlations: Dict[str, Any] = {
@@ -1960,17 +2647,28 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
         "common_data_types": {},
         "similar_sizes": [],
         "potential_joins": [],
+        "llm_suggested_joins": [],  # New field for LLM-identified join keys
     }
 
     # Find common columns across DataFrames
     dataframes = {
         fname: info
         for fname, info in data_results.items()
-        if info.get("Type") == "DataFrame"
+        if info.get("Type", "").startswith("DataFrame")
     }
+
+    log.info(
+        "DataFrame files identified for correlation",
+        count=len(dataframes),
+        filenames=list(dataframes.keys()),
+    )
 
     # Exit early if we don't have at least 2 DataFrames
     if len(dataframes) < 2:
+        log.warning(
+            "Not enough DataFrame files for correlation analysis",
+            dataframes_found=len(dataframes),
+        )
         return {
             "message": "Not enough DataFrame files found for correlation analysis",
             "dataframes_found": len(dataframes),
@@ -1982,6 +2680,7 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     # Find shared columns
     for fname, info in dataframes.items():
         columns = info.get("Columns", [])
+        log.debug(f"Processing columns for file {fname}", column_count=len(columns))
         for col in columns:
             col_str = str(col)
             if col_str not in all_columns:
@@ -1992,6 +2691,7 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     correlations["shared_columns"] = {
         col: files for col, files in all_columns.items() if len(files) > 1
     }
+    log.info("Shared columns identified", count=len(correlations["shared_columns"]))
 
     # Find potential join keys
     potential_joins: List[Dict[str, Any]] = []
@@ -1999,8 +2699,10 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
         if len(files) >= 2:
             potential_joins.append({"column": col, "files": files})
     correlations["potential_joins"] = potential_joins
+    log.info("Potential join keys identified", count=len(potential_joins))
 
     # Find similar data types
+    common_types_count = 0
     for fname1, info1 in dataframes.items():
         for fname2, info2 in dataframes.items():
             if fname1 >= fname2:  # Skip self-comparisons and duplicates
@@ -2025,6 +2727,9 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                     if "common_data_types" not in correlations:
                         correlations["common_data_types"] = {}
                     correlations["common_data_types"][key] = matching_dtypes
+                    common_types_count += 1
+
+    log.info("Common data types identified", count=common_types_count)
 
     # Find files with similar sizes
     sizes = []
@@ -2059,6 +2764,283 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 {"files": [curr_file, next_file], "row_counts": [curr_size, next_size]}
             )
     correlations["similar_sizes"] = similar_sizes
+    log.info("Similar sized files identified", count=len(similar_sizes))
+
+    # NEW PART: Use LLM to identify potential join keys based on column names and sample values
+    if openai_client:
+        log.info("Starting LLM-based join key analysis")
+        try:
+            # Prepare detailed information about each dataframe for the LLM
+            dataframe_details = {}
+            missing_sample_data = []
+
+            for fname, info in dataframes.items():
+                # Extract column information
+                columns = info.get("Columns", [])
+
+                # Extract sample data if available - check different possible keys
+                sample_data = []
+
+                # Try different keys that might contain sample data
+                sample_data_found = False
+                sample_key_used = None
+
+                for key in ["Sample Data", "sample_data", "SampleData"]:
+                    if key in info and info[key]:
+                        raw_sample = info[key]
+                        log.debug(
+                            f"Found sample data in key '{key}' for file {fname}",
+                            is_list=isinstance(raw_sample, list),
+                            is_str=isinstance(raw_sample, str),
+                        )
+
+                        # Handle different formats
+                        if isinstance(raw_sample, list):
+                            sample_data = raw_sample
+                            sample_data_found = True
+                            sample_key_used = key
+                            break
+                        elif isinstance(raw_sample, str):
+                            # Try to parse JSON string
+                            try:
+                                if raw_sample.startswith("["):
+                                    sample_data = json.loads(
+                                        raw_sample.replace("'", '"')
+                                    )
+                                    sample_data_found = True
+                                    sample_key_used = key
+                                    break
+                                elif raw_sample.startswith("{"):
+                                    # Might be a dict format with columns as keys
+                                    sample_dict = json.loads(
+                                        raw_sample.replace("'", '"')
+                                    )
+                                    # Convert to records format if possible
+                                    if all(
+                                        isinstance(sample_dict[col], list)
+                                        for col in sample_dict
+                                    ):
+                                        # Get the length of the first list
+                                        first_col = list(sample_dict.keys())[0]
+                                        length = len(sample_dict[first_col])
+                                        # Create records
+                                        records = []
+                                        for i in range(length):
+                                            record = {}
+                                            for col, values in sample_dict.items():
+                                                if i < len(values):
+                                                    record[col] = values[i]
+                                            records.append(record)
+                                        sample_data = records
+                                        sample_data_found = True
+                                        sample_key_used = key
+                                        break
+                            except Exception as e:
+                                log.warning(
+                                    f"Failed to parse sample data JSON for file {fname}",
+                                    error=str(e),
+                                    key=key,
+                                )
+                                # Failed to parse, continue to next key
+                                pass
+
+                if not sample_data_found:
+                    missing_sample_data.append(fname)
+                    log.warning(f"No sample data found for file {fname}")
+                else:
+                    log.info(
+                        f"Sample data found for file {fname}",
+                        key=sample_key_used,
+                        records_count=len(sample_data),
+                    )
+
+                # Create a summary of sample values for each column
+                column_samples = {}
+                for col in columns:
+                    col_str = str(col)
+                    col_values = []
+
+                    # Extract values from sample data
+                    for row in sample_data[:3]:  # Use up to 3 rows
+                        if isinstance(row, dict) and col_str in row:
+                            value = row[col_str]
+                            # Convert non-string values to strings
+                            if not isinstance(value, str):
+                                value = str(value)
+                            col_values.append(value)
+
+                    if col_values:
+                        column_samples[col_str] = col_values
+
+                # Add to dataframe details
+                dataframe_details[fname] = {
+                    "columns": columns,
+                    "column_samples": column_samples,
+                    "shape": info.get("Shape", "Unknown"),
+                    "dtypes": info.get("dtypes", {}),
+                }
+
+            log.info(
+                "Prepared dataframe details for LLM",
+                dataframe_count=len(dataframe_details),
+                missing_sample_data=missing_sample_data,
+            )
+
+            # Prepare the prompt for the LLM
+            prompt = f"""
+You are analyzing multiple dataframes to identify potential join keys. I'll provide details about each dataframe including column names and sample values.
+
+Your task is to identify columns across different dataframes that could potentially be used as join keys, even if they have different column names. 
+Look for columns that might contain the same type of entity identifiers, foreign keys, or related information.
+
+Consider:
+1. Columns with similar names or semantically related names (e.g. 'user_id' and 'uid')
+2. Columns with similar value patterns
+3. Columns that might represent the same entities across different tables
+
+Here are the dataframes:
+{json.dumps(dataframe_details, indent=2)}
+
+Respond with a JSON array where each item represents a potential join relationship. Each item should be an object with these fields:
+- "source_file": String, name of the first dataframe
+- "source_column": String, column name in the first dataframe
+- "target_file": String, name of the second dataframe
+- "target_column": String, column name in the second dataframe
+- "confidence": Number between 0 and 1, your confidence in this relationship
+- "explanation": String, brief explanation of why these columns might be joinable
+
+Only include column pairs that have a reasonable chance of being related. Focus on quality over quantity.
+If you're not confident about any join keys, return an empty array [].
+"""
+
+            log.info(
+                "Sending prompt to OpenAI for join key analysis",
+                prompt_length=len(prompt),
+                dataframe_count=len(dataframe_details),
+            )
+
+            # Call the OpenAI API
+            response = openai_client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a data analysis expert that identifies potential relationships between dataframes.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,  # Lower temperature for more conservative suggestions
+            )
+
+            # Extract and parse the response
+            llm_response = response.choices[0].message.content
+            if llm_response:
+                log.info(
+                    "Received response from OpenAI",
+                    response_length=len(llm_response),
+                    response_snippet=llm_response[:100],
+                )
+
+            # Log the full response for debugging
+            log.debug("Full LLM response", response=llm_response)
+
+            # Parse the JSON response
+            if llm_response:
+                try:
+                    suggested_joins = json.loads(llm_response)
+                    # Log the raw parsed JSON
+                    log.debug(
+                        "Parsed LLM response JSON",
+                        is_dict=isinstance(suggested_joins, dict),
+                        is_list=isinstance(suggested_joins, list),
+                    )
+
+                    # Check if it's a list or if it's wrapped in another object
+                    if isinstance(suggested_joins, dict) and "joins" in suggested_joins:
+                        suggested_joins = suggested_joins["joins"]
+                        log.info("Extracted 'joins' array from response dictionary")
+                    elif isinstance(suggested_joins, list):
+                        # Already in the right format
+                        log.info("LLM response is already in list format")
+                    elif isinstance(suggested_joins, dict):
+                        # Look for any array in the response
+                        found_array = False
+                        for key, value in suggested_joins.items():
+                            if isinstance(value, list):
+                                log.info(
+                                    f"Found array in key '{key}' of response dictionary"
+                                )
+                                suggested_joins = value
+                                found_array = True
+                                break
+                        if not found_array:
+                            # No array found, create empty list
+                            log.warning(
+                                "No array found in response dictionary, using empty list"
+                            )
+                            suggested_joins = []
+                    else:
+                        # Not a recognized format, create empty list
+                        log.warning(
+                            "Unrecognized format in LLM response, using empty list",
+                            type=type(suggested_joins).__name__,
+                        )
+                        suggested_joins = []
+
+                    # Ensure it's a list
+                    if not isinstance(suggested_joins, list):
+                        log.warning(
+                            "Ensuring suggested_joins is a list",
+                            original_type=type(suggested_joins).__name__,
+                        )
+                        suggested_joins = []
+
+                    correlations["llm_suggested_joins"] = suggested_joins
+                    # Add a flag to indicate the LLM was successfully called but found no joins
+                    if len(suggested_joins) == 0:
+                        log.info("LLM found no join keys")
+                        correlations["llm_no_joins_found"] = True
+
+                    log.info(
+                        "LLM suggested join keys analysis complete",
+                        count=len(suggested_joins),
+                        keys=[
+                            (
+                                j.get("source_file", "?"),
+                                j.get("source_column", "?"),
+                                j.get("target_file", "?"),
+                                j.get("target_column", "?"),
+                            )
+                            for j in suggested_joins[:5]
+                        ],
+                    )  # Log first 5 joins
+                except json.JSONDecodeError as e:
+                    log.error(
+                        "Failed to parse LLM response as JSON",
+                        error=str(e),
+                        response=llm_response[:200],
+                    )
+                    correlations["llm_analysis_error"] = f"JSON parse error: {str(e)}"
+        except Exception as e:
+            log.error(
+                "Error in LLM-based join key analysis",
+                error=str(e),
+                traceback=traceback.format_exc(),
+            )
+            # Don't fail the whole function if LLM analysis fails
+            correlations["llm_analysis_error"] = str(e)
+    else:
+        log.warning("OpenAI client not available, skipping LLM-based join key analysis")
+
+    log.info(
+        "Correlation analysis complete",
+        shared_columns=len(correlations.get("shared_columns", {})),
+        potential_joins=len(correlations.get("potential_joins", [])),
+        similar_sizes=len(correlations.get("similar_sizes", [])),
+        common_data_types=len(correlations.get("common_data_types", {})),
+        llm_suggested_joins=len(correlations.get("llm_suggested_joins", [])),
+    )
 
     return correlations
 
