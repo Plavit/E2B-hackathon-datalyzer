@@ -1,4 +1,22 @@
+<div align="center">
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://github.com/Plavit/E2B-hackathon-datalyzer" alt="Repository QR Code"/>
+</div>
+
+<div align="center">
+
+[![GitHub stars](https://img.shields.io/github/stars/Plavit/E2B-hackathon-datalyzer?style=social)](https://github.com/Plavit/E2B-hackathon-datalyzer/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/Plavit/E2B-hackathon-datalyzer?style=social)](https://github.com/Plavit/E2B-hackathon-datalyzer/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/Plavit/E2B-hackathon-datalyzer)](https://github.com/Plavit/E2B-hackathon-datalyzer/issues)
+[![GitHub license](https://img.shields.io/github/license/Plavit/E2B-hackathon-datalyzer)](https://github.com/Plavit/E2B-hackathon-datalyzer)
+[![GitHub last commit](https://img.shields.io/github/last-commit/Plavit/E2B-hackathon-datalyzer)](https://github.com/Plavit/E2B-hackathon-datalyzer/commits/main)
+
+</div>
+
+<img src="img/D2MA-logo.svg" alt="D2MA Logo" width="400"/>
+
 # D2MA Deep Data Mess Analyzer for the E2B Hackathon
+
+
 
 A comprehensive tool for analyzing data files along with text/document context, finding correlations and generating AI-powered analysis.
 
@@ -96,3 +114,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 ## Security
 
 All analysis of pickle files is performed securely in an E2B sandbox to prevent malicious code execution. The application never directly unpickles user-uploaded files on the server.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Built with ❤️ by [Marek Miltner](https://github.com/Plavit) and [Šimon Podhajský](https://github.com/Shippy)
