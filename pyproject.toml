@@ -1,14 +1,20 @@
 [project]
 name = "e2b-hackathon"
 version = "0.1.0"
-description = "Add your description here"
+description = "Analyze pickle files using E2B sandbox"
 readme = "README.md"
 authors = [
     { name = "Simon Podhajsky", email = "simon.podhajsky@gmail.com" },
     { name = "Marek Miltner", email = "marek.miltner@gmail.com" },
 ]
 requires-python = ">=3.13"
-dependencies = ["e2b-code-interpreter>=1.1.1", "python-dotenv>=1.0.1"]
+dependencies = [
+    "e2b-code-interpreter>=1.1.1",
+    "python-dotenv>=1.0.1",
+    "numpy>=1.25.0",
+    "pandas>=2.0.0",
+    "pandas-stubs>=2.2.3.250308",
+]
 
 [project.scripts]
 e2b-hackathon = "e2b_hackathon:main"

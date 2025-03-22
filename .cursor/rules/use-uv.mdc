@@ -1,0 +1,7 @@
+---
+description: Installing packages and modifying environment
+globs: *.py,pyproject.toml
+alwaysApply: false
+---
+
+Use `uv add` instead of `pip install` to add packages.
