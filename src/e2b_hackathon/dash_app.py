@@ -171,6 +171,11 @@ layout = dbc.Container(
                             id="analyze-correlations-button",
                             className="btn btn-primary mb-3",
                         ),
+                        dcc.Loading(
+                            id="loading-correlation",
+                            type="circle",
+                            children=html.Div(id="correlation-loading-output"),
+                        ),
                         html.Div(id="correlation-output"),
                     ],
                     width=12,
@@ -187,6 +192,11 @@ layout = dbc.Container(
                             "Generate Analysis Plan",
                             id="generate-plan-button",
                             className="btn btn-primary mb-3",
+                        ),
+                        dcc.Loading(
+                            id="loading-plan",
+                            type="circle",
+                            children=html.Div(id="plan-loading-output"),
                         ),
                         html.Div(id="ai-plan-output"),
                     ],
@@ -1333,6 +1343,7 @@ def update_context_output(context_contents, context_filenames, stored_context_re
 @callback(
     Output("correlation-output", "children"),
     Output("correlation-store", "data"),
+    Output("correlation-loading-output", "children"),
     Input("analyze-correlations-button", "n_clicks"),
     State("data-store", "data"),
 )
@@ -1342,32 +1353,68 @@ def update_correlation_analysis(n_clicks, data_results):
     Returns:
         - Correlation output component
         - Correlation results data
+        - Loading output (for the spinner)
     """
     # Check if callback was triggered
     if n_clicks is None or n_clicks == 0 or not data_results:
-        return html.Div(
-            "Click 'Analyze Correlations' to find connections between your data files."
-        ), {}
+        log.debug(
+            "Correlation analysis not triggered",
+            n_clicks=n_clicks,
+            has_data=bool(data_results),
+        )
+        return (
+            html.Div(
+                "Click 'Analyze Correlations' to find connections between your data files."
+            ),
+            {},
+            "",
+        )
 
     # Check if we have data results
     if not data_results or len(data_results) < 2:
-        return dbc.Alert(
-            "Upload at least two data files to analyze correlations.", color="warning"
-        ), {}
+        log.warning(
+            "Not enough data files for correlation analysis UI",
+            file_count=len(data_results) if data_results else 0,
+        )
+        return (
+            dbc.Alert(
+                "Upload at least two data files to analyze correlations.",
+                color="warning",
+            ),
+            {},
+            "",
+        )
 
     try:
+        log.info(
+            "Starting correlation analysis UI update", data_file_count=len(data_results)
+        )
         # Find correlations
         correlation_results = correlate_data_files(data_results)
 
+        log.info(
+            "Processing correlation results for UI display",
+            keys=list(correlation_results.keys()),
+            has_error="error" in correlation_results,
+            has_message="message" in correlation_results,
+        )
+
         if "error" in correlation_results:
-            return dbc.Alert(correlation_results["error"], color="warning"), {}
+            log.warning(
+                "Error in correlation results", error=correlation_results["error"]
+            )
+            return dbc.Alert(correlation_results["error"], color="warning"), {}, ""
 
         # Create output components for correlations
         output_components = []
+        # Track if any correlations were found
+        found_correlations = False
 
         # Shared columns
         shared_cols = correlation_results.get("shared_columns", {})
         if shared_cols:
+            found_correlations = True
+            log.info("Processing shared columns for UI", count=len(shared_cols))
             shared_cols_items = []
             for col, files in shared_cols.items():
                 shared_cols_items.append(
@@ -1387,14 +1434,12 @@ def update_correlation_analysis(n_clicks, data_results):
                     className="mb-4",
                 )
             )
-        else:
-            output_components.append(
-                dbc.Alert("No shared columns found between files.", color="info")
-            )
 
         # Potential join keys
         joins = correlation_results.get("potential_joins", [])
         if joins:
+            found_correlations = True
+            log.info("Processing potential join keys for UI", count=len(joins))
             joins_items = []
             for join in joins:
                 joins_items.append(
@@ -1422,6 +1467,8 @@ def update_correlation_analysis(n_clicks, data_results):
         # Similar sized files
         similar_sizes = correlation_results.get("similar_sizes", [])
         if similar_sizes:
+            found_correlations = True
+            log.info("Processing similar sized files for UI", count=len(similar_sizes))
             size_items = []
             for size_info in similar_sizes:
                 size_items.append(
@@ -1453,6 +1500,8 @@ def update_correlation_analysis(n_clicks, data_results):
         # Common data types
         common_types = correlation_results.get("common_data_types", {})
         if common_types:
+            found_correlations = True
+            log.info("Processing common data types for UI", count=len(common_types))
             types_components = []
 
             for files_key, types in common_types.items():
@@ -1485,9 +1534,19 @@ def update_correlation_analysis(n_clicks, data_results):
         # LLM-suggested join keys (NEW SECTION)
         llm_joins = correlation_results.get("llm_suggested_joins", [])
         if llm_joins:
+            found_correlations = True
+            log.info(
+                "Processing LLM-suggested join keys for UI", raw_count=len(llm_joins)
+            )
             # Sort by confidence score in descending order
             llm_joins = sorted(
                 llm_joins, key=lambda x: x.get("confidence", 0), reverse=True
+            )
+            log.debug(
+                "Sorted LLM joins",
+                first_confidence=llm_joins[0].get("confidence", 0)
+                if llm_joins
+                else "N/A",
             )
 
             llm_joins_items = []
@@ -1495,6 +1554,9 @@ def update_correlation_analysis(n_clicks, data_results):
                 # Format the confidence as a percentage
                 confidence = join.get("confidence", 0)
                 confidence_str = f"{confidence * 100:.0f}%" if confidence else "Unknown"
+
+                # Log simplified information about this join
+                log.debug(f"Processing LLM join with confidence {confidence_str}")
 
                 # Create badge with appropriate color based on confidence
                 if confidence >= 0.7:
@@ -1530,6 +1592,8 @@ def update_correlation_analysis(n_clicks, data_results):
                     )
                 )
 
+            log.info("Created LLM joins UI items", count=len(llm_joins_items))
+
             output_components.append(
                 dbc.Card(
                     [
@@ -1554,6 +1618,8 @@ def update_correlation_analysis(n_clicks, data_results):
             and correlation_results["llm_no_joins_found"]
         ):
             # LLM was called but didn't find any potential join keys
+            # Don't set found_correlations = True here as this isn't a positive correlation finding
+            log.info("LLM found no join keys, displaying informational card")
             output_components.append(
                 dbc.Card(
                     [
@@ -1603,6 +1669,10 @@ def update_correlation_analysis(n_clicks, data_results):
             )
         elif "llm_analysis_error" in correlation_results:
             # Show error if LLM analysis failed
+            log.warning(
+                "LLM analysis error found",
+                error=correlation_results["llm_analysis_error"],
+            )
             output_components.append(
                 dbc.Alert(
                     [
@@ -1614,23 +1684,68 @@ def update_correlation_analysis(n_clicks, data_results):
                 )
             )
 
-        return html.Div(output_components), correlation_results
+        # Display a message if no correlations of any kind were found
+        if not found_correlations:
+            log.warning(
+                "No correlations found for display",
+                correlation_keys=list(correlation_results.keys()),
+            )
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H5("No Correlations Found", className="alert-heading"),
+                        html.P(
+                            "No correlations or relationships were found between the uploaded files. This could be because:"
+                        ),
+                        html.Ul(
+                            [
+                                html.Li("The datasets are completely unrelated"),
+                                html.Li(
+                                    "The column names are different and don't share common patterns"
+                                ),
+                                html.Li(
+                                    "The data structures are too dissimilar to identify relationships automatically"
+                                ),
+                            ]
+                        ),
+                        html.P(
+                            "Try adding more context files or examining the data manually to identify potential relationships."
+                        ),
+                    ],
+                    color="info",
+                    className="mb-4",
+                )
+            )
+
+        log.info(
+            "Correlation UI update complete",
+            component_count=len(output_components),
+            found_correlations=found_correlations,
+        )
+
+        # Return with empty loading output to clear spinner
+        return html.Div(output_components), correlation_results, ""
 
     except Exception as e:
         log.error("Error in correlation analysis", error=str(e))
-        return dbc.Alert(
-            [
-                html.H5("Error in Correlation Analysis"),
-                html.P(str(e)),
-                html.Pre(traceback.format_exc()),
-            ],
-            color="danger",
-        ), {}
+        return (
+            dbc.Alert(
+                [
+                    html.H5("Error in Correlation Analysis"),
+                    html.P(str(e)),
+                    html.Pre(traceback.format_exc()),
+                ],
+                color="danger",
+            ),
+            {},
+            "",
+        )
 
 
 @callback(
     Output("ai-plan-output", "children"),
     Output("ai-plan-store", "data"),
+    Output("plan-loading-output", "children"),
     Input("generate-plan-button", "n_clicks"),
     State("data-store", "data"),
     State("context-store", "data"),
@@ -1642,18 +1757,25 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
     Returns:
         - AI plan output component
         - AI plan data
+        - Loading output (for the spinner)
     """
     if n_clicks is None or n_clicks == 0 or not data_results:
-        return html.Div(
-            "Click 'Generate Analysis Plan' to create an AI-powered plan."
-        ), {}
+        return (
+            html.Div("Click 'Generate Analysis Plan' to create an AI-powered plan."),
+            {},
+            "",
+        )
 
     # Check if we have data results
     if not data_results:
-        return dbc.Alert(
-            "Upload data files first before generating an analysis plan.",
-            color="warning",
-        ), {}
+        return (
+            dbc.Alert(
+                "Upload data files first before generating an analysis plan.",
+                color="warning",
+            ),
+            {},
+            "",
+        )
 
     try:
         # Generate analysis plan
@@ -1662,14 +1784,18 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
         )
 
         if "error" in plan_results:
-            return dbc.Alert(
-                [
-                    html.H5("Error Generating Analysis Plan"),
-                    html.P(plan_results["error"]),
-                    html.Pre(plan_results.get("traceback", "")),
-                ],
-                color="danger",
-            ), {}
+            return (
+                dbc.Alert(
+                    [
+                        html.H5("Error Generating Analysis Plan"),
+                        html.P(plan_results["error"]),
+                        html.Pre(plan_results.get("traceback", "")),
+                    ],
+                    color="danger",
+                ),
+                {},
+                "",
+            )
 
         # Create output components for the plan
         output_components = []
@@ -1748,18 +1874,23 @@ def update_analysis_plan(n_clicks, data_results, context_results, correlation_re
                 )
             )
 
-        return html.Div(output_components), plan_results
+        # Return with empty loading output to clear spinner
+        return html.Div(output_components), plan_results, ""
 
     except Exception as e:
         log.error("Error generating analysis plan", error=str(e))
-        return dbc.Alert(
-            [
-                html.H5("Error Generating Analysis Plan"),
-                html.P(str(e)),
-                html.Pre(traceback.format_exc()),
-            ],
-            color="danger",
-        ), {}
+        return (
+            dbc.Alert(
+                [
+                    html.H5("Error Generating Analysis Plan"),
+                    html.P(str(e)),
+                    html.Pre(traceback.format_exc()),
+                ],
+                color="danger",
+            ),
+            {},
+            "",
+        )
 
 
 @callback(
@@ -2146,7 +2277,7 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
 
         elif ext == ".csv":
             try:
-                df = pd.read_csv(file_path)
+                df = pd.read_csv(file_path, low_memory=False)
                 file_info.update(analyze_dataframe(df))
                 file_info["Type"] = "DataFrame (CSV)"
                 return file_info
@@ -2507,7 +2638,12 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     Returns:
         Dictionary with correlation results
     """
+    log.info("Argument", arg=data_results)
     if not data_results or len(data_results) < 2:
+        log.warning(
+            "Not enough data files for correlation analysis",
+            count=len(data_results) if data_results else 0,
+        )
         return {"error": "Need at least two data files to find correlations"}
 
     correlations: Dict[str, Any] = {
@@ -2522,11 +2658,21 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     dataframes = {
         fname: info
         for fname, info in data_results.items()
-        if info.get("Type") == "DataFrame"
+        if info.get("Type", "").startswith("DataFrame")
     }
+
+    log.info(
+        "DataFrame files identified for correlation",
+        count=len(dataframes),
+        filenames=list(dataframes.keys()),
+    )
 
     # Exit early if we don't have at least 2 DataFrames
     if len(dataframes) < 2:
+        log.warning(
+            "Not enough DataFrame files for correlation analysis",
+            dataframes_found=len(dataframes),
+        )
         return {
             "message": "Not enough DataFrame files found for correlation analysis",
             "dataframes_found": len(dataframes),
@@ -2538,6 +2684,7 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     # Find shared columns
     for fname, info in dataframes.items():
         columns = info.get("Columns", [])
+        log.debug(f"Processing columns for file {fname}", column_count=len(columns))
         for col in columns:
             col_str = str(col)
             if col_str not in all_columns:
@@ -2548,6 +2695,7 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
     correlations["shared_columns"] = {
         col: files for col, files in all_columns.items() if len(files) > 1
     }
+    log.info("Shared columns identified", count=len(correlations["shared_columns"]))
 
     # Find potential join keys
     potential_joins: List[Dict[str, Any]] = []
@@ -2555,8 +2703,10 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
         if len(files) >= 2:
             potential_joins.append({"column": col, "files": files})
     correlations["potential_joins"] = potential_joins
+    log.info("Potential join keys identified", count=len(potential_joins))
 
     # Find similar data types
+    common_types_count = 0
     for fname1, info1 in dataframes.items():
         for fname2, info2 in dataframes.items():
             if fname1 >= fname2:  # Skip self-comparisons and duplicates
@@ -2581,6 +2731,9 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                     if "common_data_types" not in correlations:
                         correlations["common_data_types"] = {}
                     correlations["common_data_types"][key] = matching_dtypes
+                    common_types_count += 1
+
+    log.info("Common data types identified", count=common_types_count)
 
     # Find files with similar sizes
     sizes = []
@@ -2615,12 +2768,16 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 {"files": [curr_file, next_file], "row_counts": [curr_size, next_size]}
             )
     correlations["similar_sizes"] = similar_sizes
+    log.info("Similar sized files identified", count=len(similar_sizes))
 
     # NEW PART: Use LLM to identify potential join keys based on column names and sample values
     if openai_client:
+        log.info("Starting LLM-based join key analysis")
         try:
             # Prepare detailed information about each dataframe for the LLM
             dataframe_details = {}
+            missing_sample_data = []
+
             for fname, info in dataframes.items():
                 # Extract column information
                 columns = info.get("Columns", [])
@@ -2629,13 +2786,23 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 sample_data = []
 
                 # Try different keys that might contain sample data
+                sample_data_found = False
+                sample_key_used = None
+
                 for key in ["Sample Data", "sample_data", "SampleData"]:
                     if key in info and info[key]:
                         raw_sample = info[key]
+                        log.debug(
+                            f"Found sample data in key '{key}' for file {fname}",
+                            is_list=isinstance(raw_sample, list),
+                            is_str=isinstance(raw_sample, str),
+                        )
 
                         # Handle different formats
                         if isinstance(raw_sample, list):
                             sample_data = raw_sample
+                            sample_data_found = True
+                            sample_key_used = key
                             break
                         elif isinstance(raw_sample, str):
                             # Try to parse JSON string
@@ -2644,6 +2811,8 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                                     sample_data = json.loads(
                                         raw_sample.replace("'", '"')
                                     )
+                                    sample_data_found = True
+                                    sample_key_used = key
                                     break
                                 elif raw_sample.startswith("{"):
                                     # Might be a dict format with columns as keys
@@ -2667,10 +2836,27 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                                                     record[col] = values[i]
                                             records.append(record)
                                         sample_data = records
+                                        sample_data_found = True
+                                        sample_key_used = key
                                         break
-                            except:
+                            except Exception as e:
+                                log.warning(
+                                    f"Failed to parse sample data JSON for file {fname}",
+                                    error=str(e),
+                                    key=key,
+                                )
                                 # Failed to parse, continue to next key
                                 pass
+
+                if not sample_data_found:
+                    missing_sample_data.append(fname)
+                    log.warning(f"No sample data found for file {fname}")
+                else:
+                    log.info(
+                        f"Sample data found for file {fname}",
+                        key=sample_key_used,
+                        records_count=len(sample_data),
+                    )
 
                 # Create a summary of sample values for each column
                 column_samples = {}
@@ -2697,6 +2883,12 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                     "shape": info.get("Shape", "Unknown"),
                     "dtypes": info.get("dtypes", {}),
                 }
+
+            log.info(
+                "Prepared dataframe details for LLM",
+                dataframe_count=len(dataframe_details),
+                missing_sample_data=missing_sample_data,
+            )
 
             # Prepare the prompt for the LLM
             prompt = f"""
@@ -2725,6 +2917,12 @@ Only include column pairs that have a reasonable chance of being related. Focus 
 If you're not confident about any join keys, return an empty array [].
 """
 
+            log.info(
+                "Sending prompt to OpenAI for join key analysis",
+                prompt_length=len(prompt),
+                dataframe_count=len(dataframe_details),
+            )
+
             # Call the OpenAI API
             response = openai_client.chat.completions.create(
                 model="gpt-4-turbo",
@@ -2741,48 +2939,92 @@ If you're not confident about any join keys, return an empty array [].
 
             # Extract and parse the response
             llm_response = response.choices[0].message.content
+            log.info(
+                "Received response from OpenAI",
+                response_length=len(llm_response),
+                response_snippet=llm_response[:100],
+            )
+
+            # Log the full response for debugging
+            log.debug("Full LLM response", response=llm_response)
 
             # Parse the JSON response
             if llm_response:
                 try:
                     suggested_joins = json.loads(llm_response)
+                    # Log the raw parsed JSON
+                    log.debug(
+                        "Parsed LLM response JSON",
+                        is_dict=isinstance(suggested_joins, dict),
+                        is_list=isinstance(suggested_joins, list),
+                    )
+
                     # Check if it's a list or if it's wrapped in another object
                     if isinstance(suggested_joins, dict) and "joins" in suggested_joins:
                         suggested_joins = suggested_joins["joins"]
+                        log.info("Extracted 'joins' array from response dictionary")
                     elif isinstance(suggested_joins, list):
                         # Already in the right format
-                        pass
+                        log.info("LLM response is already in list format")
                     elif isinstance(suggested_joins, dict):
                         # Look for any array in the response
                         found_array = False
                         for key, value in suggested_joins.items():
                             if isinstance(value, list):
+                                log.info(
+                                    f"Found array in key '{key}' of response dictionary"
+                                )
                                 suggested_joins = value
                                 found_array = True
                                 break
                         if not found_array:
                             # No array found, create empty list
+                            log.warning(
+                                "No array found in response dictionary, using empty list"
+                            )
                             suggested_joins = []
                     else:
                         # Not a recognized format, create empty list
+                        log.warning(
+                            f"Unrecognized format in LLM response, using empty list",
+                            type=type(suggested_joins).__name__,
+                        )
                         suggested_joins = []
 
                     # Ensure it's a list
                     if not isinstance(suggested_joins, list):
+                        log.warning(
+                            "Ensuring suggested_joins is a list",
+                            original_type=type(suggested_joins).__name__,
+                        )
                         suggested_joins = []
 
                     correlations["llm_suggested_joins"] = suggested_joins
                     # Add a flag to indicate the LLM was successfully called but found no joins
                     if len(suggested_joins) == 0:
+                        log.info("LLM found no join keys")
                         correlations["llm_no_joins_found"] = True
 
-                    log.info("LLM suggested join keys", count=len(suggested_joins))
+                    log.info(
+                        "LLM suggested join keys analysis complete",
+                        count=len(suggested_joins),
+                        keys=[
+                            (
+                                j.get("source_file", "?"),
+                                j.get("source_column", "?"),
+                                j.get("target_file", "?"),
+                                j.get("target_column", "?"),
+                            )
+                            for j in suggested_joins[:5]
+                        ],
+                    )  # Log first 5 joins
                 except json.JSONDecodeError as e:
                     log.error(
                         "Failed to parse LLM response as JSON",
                         error=str(e),
                         response=llm_response[:200],
                     )
+                    correlations["llm_analysis_error"] = f"JSON parse error: {str(e)}"
         except Exception as e:
             log.error(
                 "Error in LLM-based join key analysis",
@@ -2791,6 +3033,17 @@ If you're not confident about any join keys, return an empty array [].
             )
             # Don't fail the whole function if LLM analysis fails
             correlations["llm_analysis_error"] = str(e)
+    else:
+        log.warning("OpenAI client not available, skipping LLM-based join key analysis")
+
+    log.info(
+        "Correlation analysis complete",
+        shared_columns=len(correlations.get("shared_columns", {})),
+        potential_joins=len(correlations.get("potential_joins", [])),
+        similar_sizes=len(correlations.get("similar_sizes", [])),
+        common_data_types=len(correlations.get("common_data_types", {})),
+        llm_suggested_joins=len(correlations.get("llm_suggested_joins", [])),
+    )
 
     return correlations
 
