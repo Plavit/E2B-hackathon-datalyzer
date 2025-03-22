@@ -18,11 +18,11 @@ git clone https://github.com/yourusername/e2b-hackathon.git
 cd e2b-hackathon
 
 # Set up your environment
-python -m venv .venv
+uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-uv add -e .
+uv sync
 ```
 
 ## API Key Setup
