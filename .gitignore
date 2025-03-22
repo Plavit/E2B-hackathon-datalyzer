@@ -14,3 +14,5 @@ samples/*.pkl
 sample_pickles/*.pickle
 sample_pickles/*.pkl
 temp_files/*
+
+data/*
