@@ -529,13 +529,13 @@ def get_additional_info_component(
                 ]
             )
 
-            # Create accordion for each object
+            # Create cards for each object - directly visible without collapsible panels
             object_cards = []
             for i, obj in enumerate(analyzed_objects):
                 obj_type = obj.get("Object Type", "Unknown")
-                obj_details = []
 
                 # Create list items for each property
+                obj_details = []
                 for key, value in obj.items():
                     if key not in ["Object Index"]:
                         obj_details.append(
@@ -544,25 +544,18 @@ def get_additional_info_component(
                             )
                         )
 
-                # Create card for this object
+                # Create card for this object - directly visible
                 object_cards.append(
                     dbc.Card(
                         [
                             dbc.CardHeader(
-                                dbc.Button(
-                                    f"Object #{i + 1}: {obj_type}",
-                                    id={"type": "object-button", "index": i},
-                                    color="link",
-                                    className="text-left",
+                                html.H6(
+                                    f"Object #{i + 1}: {obj_type}", className="mb-0"
                                 )
                             ),
-                            dbc.Collapse(
-                                dbc.CardBody([dbc.ListGroup(obj_details)]),
-                                id={"type": "object-collapse", "index": i},
-                                is_open=False,
-                            ),
+                            dbc.CardBody([dbc.ListGroup(obj_details)]),
                         ],
-                        className="mb-2",
+                        className="mb-3",
                     )
                 )
 
@@ -798,6 +791,17 @@ def get_additional_info_component(
     [State({"type": "collapse", "index": dash.dependencies.MATCH}, "is_open")],
 )
 def toggle_collapse(n_clicks, is_open):
+    if n_clicks:
+        return not is_open
+    return is_open
+
+
+@callback(
+    Output({"type": "object-collapse", "index": dash.dependencies.MATCH}, "is_open"),
+    [Input({"type": "object-button", "index": dash.dependencies.MATCH}, "n_clicks")],
+    [State({"type": "object-collapse", "index": dash.dependencies.MATCH}, "is_open")],
+)
+def toggle_object_collapse(n_clicks, is_open):
     if n_clicks:
         return not is_open
     return is_open
@@ -1710,22 +1714,20 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                     file_info["Num Objects"] = len(analyzed_objects)
 
                     # Extract a summary of object types
-                    object_types = [
-                        obj.get("Object Type", "Unknown") for obj in analyzed_objects
-                    ]
-                    type_counts: Dict[str, int] = {}
-                    for obj_type in object_types:
-                        if obj_type in type_counts:
-                            type_counts[obj_type] += 1
+                    object_type_summary: Dict[str, int] = {}
+                    for obj in analyzed_objects:
+                        obj_type = obj.get("Object Type", "Unknown")
+                        if obj_type in object_type_summary:
+                            object_type_summary[obj_type] += 1
                         else:
-                            type_counts[obj_type] = 1
-                    file_info["Object Type Summary"] = type_counts
+                            object_type_summary[obj_type] = 1
+                    file_info["Object Type Summary"] = object_type_summary
 
                     log.info(
                         "Successfully analyzed pickle file",
                         file_name=file_name,
                         num_objects=len(analyzed_objects),
-                        object_types=type_counts,
+                        object_types=object_type_summary,
                     )
                 else:
                     log.warning(
@@ -2189,6 +2191,37 @@ def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
         current_key = None
         current_value = []
 
+        # Try to extract object type directly from the first few lines
+        object_type = "Unknown"
+        for idx, line in enumerate(lines[:10]):  # Check first 10 lines
+            if "Object Type:" in line:
+                try:
+                    object_type = line.split("Object Type:")[1].strip()
+                    break
+                except:
+                    pass
+            elif "Type:" in line:
+                try:
+                    object_type = line.split("Type:")[1].strip()
+                    break
+                except:
+                    pass
+
+        # Check for specific types in output
+        if object_type == "Unknown":
+            # Look for specific patterns in text
+            if any("dict" in line.lower() for line in lines[:20]):
+                object_type = "dict"
+            elif any("list" in line.lower() for line in lines[:20]):
+                object_type = "list"
+            elif any("dataframe" in line.lower() for line in lines[:20]):
+                object_type = "DataFrame"
+            elif any("ndarray" in line.lower() for line in lines[:20]):
+                object_type = "ndarray"
+
+        # Explicitly set the Object Type
+        object_info["Object Type"] = object_type
+
         # Check if this section contains object analysis
         contains_analysis = False
         for line in lines:
@@ -2197,6 +2230,11 @@ def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
                 or "Type:" in line
                 or "Value:" in line
                 or "Contents:" in line
+                or "Length:" in line
+                or "Shape:" in line
+                or "Size:" in line
+                or "keys_count" in line
+                or "Number of keys:" in line
             ):
                 contains_analysis = True
                 break
@@ -2227,6 +2265,21 @@ def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
                 # Start a new key-value pair
                 try:
                     current_key, value = line.split(": ", 1)
+
+                    # Normalize key names for consistency with UI expectations
+                    if current_key.lower() == "type":
+                        current_key = "Object Type"
+                        # Update the object_type variable as well
+                        object_type = value
+                    elif current_key.lower() == "size":
+                        current_key = "Size (bytes)"
+                    elif current_key.lower() == "length":
+                        current_key = "Length"
+                    elif current_key.lower() == "shape":
+                        current_key = "Shape"
+                    elif current_key.lower() == "number of keys":
+                        current_key = "Number of Keys"
+
                     current_value.append(value)
                 except ValueError:
                     # If there's a problem with splitting, just store the whole line
@@ -2244,13 +2297,33 @@ def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
                 "\n".join(current_value) if len(current_value) > 1 else current_value[0]
             )
 
+        # Make sure Object Type is set
+        if "Object Type" not in object_info:
+            object_info["Object Type"] = object_type
+
+        # Add raw section text for debugging
+        object_info["Raw Section Text"] = (
+            section[:500] + "..." if len(section) > 500 else section
+        )
+
         if object_info:
             # Add an index to identify the object
             object_info["Object Index"] = str(i)
             analyzed_objects.append(object_info)
             log.debug(f"Added object #{i} with {len(object_info)} properties")
 
+    # Calculate object type summary
+    object_type_summary: Dict[str, int] = {}
+    for obj in analyzed_objects:
+        obj_type = obj.get("Object Type", "Unknown")
+        if obj_type in object_type_summary:
+            object_type_summary[obj_type] += 1
+        else:
+            object_type_summary[obj_type] = 1
+
     log.info(f"Finished parsing {len(analyzed_objects)} objects from sandbox output")
+    log.info(f"Object type summary: {object_type_summary}")
+
     return analyzed_objects
 
 
