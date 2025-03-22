@@ -14,3 +14,6 @@ samples/*.pkl
 sample_pickles/*.pickle
 sample_pickles/*.pkl
 temp_files/*
+
+# Super secret data we will never share to anyone ever this is our holy pledge as hackers at the E2B hackathon, pinky promise
+super_secret_data/*
