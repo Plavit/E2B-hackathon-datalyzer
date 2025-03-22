@@ -33,6 +33,8 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="Datalyzer",
 )
+log = structlog.get_logger()
+SEED = 42
 
 # Add custom CSS styles
 app.index_string = '''
@@ -44,6 +46,41 @@ app.index_string = '''
         {%favicon%}
         {%css%}
         <style>
+            /* Full height container */
+            .full-height-container {
+                min-height: calc(100vh - 80px); /* Account for navbar */
+                display: flex;
+                flex-direction: row;
+            }
+            
+            /* Full height columns */
+            .full-height-col {
+                display: flex;
+                flex-direction: column;
+                min-height: 100%;
+            }
+            
+            /* Full height card */
+            .full-height-card {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 0;
+            }
+            
+            .full-height-card .card-body {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+            }
+            
+            /* Fixed height container for independent scrolling */
+            .scroll-container {
+                flex: 1;
+                overflow-y: auto;
+                position: relative;
+            }
+            
             .analysis-output {
                 background-color: white;
                 border-radius: 10px;
@@ -72,21 +109,21 @@ app.index_string = '''
             }
             
             /* ChatGPT-like scrollbar */
-            ::-webkit-scrollbar {
+            .scroll-container::-webkit-scrollbar {
                 width: 8px;
             }
             
-            ::-webkit-scrollbar-track {
+            .scroll-container::-webkit-scrollbar-track {
                 background: #f1f1f1;
                 border-radius: 4px;
             }
             
-            ::-webkit-scrollbar-thumb {
+            .scroll-container::-webkit-scrollbar-thumb {
                 background: #c5c5c5;
                 border-radius: 4px;
             }
             
-            ::-webkit-scrollbar-thumb:hover {
+            .scroll-container::-webkit-scrollbar-thumb:hover {
                 background: #a8a8a8;
             }
             
@@ -112,9 +149,6 @@ app.index_string = '''
     </body>
 </html>
 '''
-
-log = structlog.get_logger()
-SEED = 42
 
 # Define the navbar with logo
 navbar = dbc.Navbar(
@@ -160,221 +194,200 @@ layout = html.Div(
                     [
                         # Left column (1/3 width) - ChatGPT-like analysis window
                         dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            # Title and description
-                                            html.H2(
-                                                "Enhanced Data Analysis Platform",
-                                                className="mb-3",
-                                                style={"fontSize": "1.5rem"}
-                                            ),
-                                            html.P(
-                                                "Upload data files (Pickle, CSV, Parquet) and context files (Text, PDF, Word) for comprehensive analysis",
-                                                className="lead mb-4",
-                                                style={"fontSize": "0.9rem"}
-                                            ),
-                                            
-                                            # Analysis sections
-                                            html.Div(
-                                                [
-                                                    # Correlation Analysis
-                                                    html.Div(
-                                                        [
-                                                            html.H5("Correlation Analysis", className="mb-3"),
-                                                            html.Button(
-                                                                "Analyze Correlations",
-                                                                id="analyze-correlations-button",
-                                                                className="btn btn-primary btn-sm mb-3",
-                                                            ),
-                                                            dcc.Loading(
-                                                                id="loading-correlation",
-                                                                type="circle",
-                                                                children=html.Div(id="correlation-loading-output"),
-                                                            ),
-                                                            html.Div(
-                                                                id="correlation-output",
-                                                                className="analysis-output"
-                                                            ),
-                                                        ],
-                                                        className="mb-4",
-                                                    ),
-                                                    
-                                                    # AI Analysis Plan
-                                                    html.Div(
-                                                        [
-                                                            html.H5("AI Analysis Plan", className="mb-3"),
-                                                            html.Button(
-                                                                "Generate Analysis Plan",
-                                                                id="generate-plan-button",
-                                                                className="btn btn-primary btn-sm mb-3",
-                                                            ),
-                                                            dcc.Loading(
-                                                                id="loading-plan",
-                                                                type="circle",
-                                                                children=html.Div(id="plan-loading-output"),
-                                                            ),
-                                                            html.Div(
-                                                                id="ai-plan-output",
-                                                                className="analysis-output"
-                                                            ),
-                                                        ],
-                                                        className="mb-4",
-                                                    ),
-                                                    
-                                                    # AI Analysis Results
-                                                    html.Div(
-                                                        [
-                                                            html.H5("AI Analysis Results", className="mb-3"),
-                                                            html.Div(
-                                                                id="ai-results-output",
-                                                                className="analysis-output"
-                                                            ),
-                                                        ],
-                                                        className="mb-4",
-                                                    ),
-                                                ],
-                                                style={
-                                                    "maxHeight": "calc(100vh - 300px)",
-                                                    "overflowY": "auto",
-                                                    "padding": "10px",
-                                                }
-                                            ),
-                                        ]
-                                    )
-                                ],
-                                className="h-100 border-0",
-                                style={
-                                    "backgroundColor": "#f8f9fa",
-                                    "borderRadius": "15px",
-                                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
-                                }
+                            html.Div(
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                # Title and description
+                                                html.H2(
+                                                    "Enhanced Data Analysis Platform",
+                                                    className="mb-3",
+                                                    style={"fontSize": "1.5rem"}
+                                                ),
+                                                html.P(
+                                                    "Upload data files (Pickle, CSV, Parquet) and context files (Text, PDF, Word) for comprehensive analysis",
+                                                    className="lead mb-4",
+                                                    style={"fontSize": "0.9rem"}
+                                                ),
+                                                
+                                                # Analysis sections in scrollable container
+                                                html.Div(
+                                                    [
+                                                        # Correlation Analysis
+                                                        html.Div(
+                                                            [
+                                                                html.H5("Correlation Analysis", className="mb-3"),
+                                                                html.Button(
+                                                                    "Analyze Correlations",
+                                                                    id="analyze-correlations-button",
+                                                                    className="btn btn-primary btn-sm mb-3",
+                                                                ),
+                                                                dcc.Loading(
+                                                                    id="loading-correlation",
+                                                                    type="circle",
+                                                                    children=html.Div(id="correlation-loading-output"),
+                                                                ),
+                                                                html.Div(
+                                                                    id="correlation-output",
+                                                                    className="analysis-output"
+                                                                ),
+                                                            ],
+                                                            className="mb-4",
+                                                        ),
+                                                        
+                                                        # AI Analysis Plan
+                                                        html.Div(
+                                                            [
+                                                                html.H5("AI Analysis Plan", className="mb-3"),
+                                                                html.Button(
+                                                                    "Generate Analysis Plan",
+                                                                    id="generate-plan-button",
+                                                                    className="btn btn-primary btn-sm mb-3",
+                                                                ),
+                                                                dcc.Loading(
+                                                                    id="loading-plan",
+                                                                    type="circle",
+                                                                    children=html.Div(id="plan-loading-output"),
+                                                                ),
+                                                                html.Div(
+                                                                    id="ai-plan-output",
+                                                                    className="analysis-output"
+                                                                ),
+                                                            ],
+                                                            className="mb-4",
+                                                        ),
+                                                        
+                                                        # AI Analysis Results
+                                                        html.Div(
+                                                            [
+                                                                html.H5("AI Analysis Results", className="mb-3"),
+                                                                html.Div(
+                                                                    id="ai-results-output",
+                                                                    className="analysis-output"
+                                                                ),
+                                                            ],
+                                                            className="mb-4",
+                                                        ),
+                                                    ],
+                                                    className="scroll-container",
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    className="h-100 border-0 full-height-card",
+                                    style={
+                                        "backgroundColor": "#f8f9fa",
+                                        "borderRadius": "15px",
+                                        "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
+                                    }
+                                ),
+                                className="full-height-col"
                             ),
                             width=4,
-                            style={"minHeight": "calc(100vh - 160px)"}  # Account for navbar and footer
+                            className="full-height-col"
                         ),
                         
                         # Right column (2/3 width)
                         dbc.Col(
-                            [
-                                # File upload section
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            [
-                                                dbc.Card(
-                                                    [
-                                                        dbc.CardBody(
-                                                            [
-                                                                html.H5(
-                                                                    "Unified File Upload",
-                                                                    className="card-title",
-                                                                ),
-                                                                html.P(
-                                                                    "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
-                                                                    className="card-text text-muted",
-                                                                ),
-                                                                dcc.Upload(
-                                                                    id="unified-upload",
-                                                                    children=html.Div(
-                                                                        [
-                                                                            html.I(
-                                                                                className="fas fa-upload me-2"
-                                                                            ),
-                                                                            "Drag and Drop or ",
-                                                                            html.A("Select Files"),
-                                                                        ]
+                            html.Div(
+                                [
+                                    # File upload section
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dbc.Card(
+                                                        [
+                                                            dbc.CardBody(
+                                                                [
+                                                                    html.H5(
+                                                                        "Unified File Upload",
+                                                                        className="card-title",
                                                                     ),
-                                                                    style={
-                                                                        "width": "100%",
-                                                                        "height": "60px",
-                                                                        "lineHeight": "60px",
-                                                                        "borderWidth": "1px",
-                                                                        "borderStyle": "dashed",
-                                                                        "borderRadius": "5px",
-                                                                        "textAlign": "center",
-                                                                        "margin": "10px 0",
-                                                                    },
-                                                                    multiple=True,
-                                                                ),
-                                                                html.P(
-                                                                    "Files will be automatically analyzed upon upload",
-                                                                    className="text-muted small mt-2",
-                                                                ),
-                                                            ]
-                                                        )
-                                                    ],
-                                                    className="mb-4",
-                                                ),
-                                            ],
-                                            width=12,
-                                        ),
-                                    ]
-                                ),
-                                
-                                # Loading and status sections
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            [
-                                                dcc.Loading(
-                                                    id="loading-analysis",
-                                                    type="circle",
-                                                    children=html.Div(id="loading-output"),
-                                                ),
-                                            ],
-                                            width=12,
-                                        )
-                                    ]
-                                ),
-                                dbc.Row([dbc.Col([html.Div(id="files-being-analyzed")], width=12)]),
-                                dbc.Row([dbc.Col([html.Div(id="error-message")], width=12)]),
-                                
-                                # Results sections
-                                dbc.Row([dbc.Col([html.Div(id="data-output", className="mt-4")], width=12)]),
-                                dbc.Row([dbc.Col([html.Div(id="context-output", className="mt-4")], width=12)]),
-                                
-                                # Store components
-                                dcc.Store(id="data-store", storage_type="memory"),
-                                dcc.Store(id="context-store", storage_type="memory"),
-                                dcc.Store(id="correlation-store", storage_type="memory"),
-                                dcc.Store(id="ai-plan-store", storage_type="memory"),
-                            ],
+                                                                    html.P(
+                                                                        "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
+                                                                        className="card-text text-muted",
+                                                                    ),
+                                                                    dcc.Upload(
+                                                                        id="unified-upload",
+                                                                        children=html.Div(
+                                                                            [
+                                                                                html.I(
+                                                                                    className="fas fa-upload me-2"
+                                                                                ),
+                                                                                "Drag and Drop or ",
+                                                                                html.A("Select Files"),
+                                                                            ]
+                                                                        ),
+                                                                        style={
+                                                                            "width": "100%",
+                                                                            "height": "60px",
+                                                                            "lineHeight": "60px",
+                                                                            "borderWidth": "1px",
+                                                                            "borderStyle": "dashed",
+                                                                            "borderRadius": "5px",
+                                                                            "textAlign": "center",
+                                                                            "margin": "10px 0",
+                                                                        },
+                                                                        multiple=True,
+                                                                    ),
+                                                                    html.P(
+                                                                        "Files will be automatically analyzed upon upload",
+                                                                        className="text-muted small mt-2",
+                                                                    ),
+                                                                ]
+                                                            )
+                                                        ],
+                                                        className="mb-4",
+                                                    ),
+                                                ],
+                                                width=12,
+                                            ),
+                                        ]
+                                    ),
+                                    
+                                    # Loading and status sections
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dcc.Loading(
+                                                        id="loading-analysis",
+                                                        type="circle",
+                                                        children=html.Div(id="loading-output"),
+                                                    ),
+                                                ],
+                                                width=12,
+                                            )
+                                        ]
+                                    ),
+                                    dbc.Row([dbc.Col([html.Div(id="files-being-analyzed")], width=12)]),
+                                    dbc.Row([dbc.Col([html.Div(id="error-message")], width=12)]),
+                                    
+                                    # Results sections
+                                    dbc.Row([dbc.Col([html.Div(id="data-output", className="mt-4")], width=12)]),
+                                    dbc.Row([dbc.Col([html.Div(id="context-output", className="mt-4")], width=12)]),
+                                    
+                                    # Store components
+                                    dcc.Store(id="data-store", storage_type="memory"),
+                                    dcc.Store(id="context-store", storage_type="memory"),
+                                    dcc.Store(id="correlation-store", storage_type="memory"),
+                                    dcc.Store(id="ai-plan-store", storage_type="memory"),
+                                ],
+                                className="scroll-container"
+                            ),
                             width=8,
+                            className="full-height-col"
                         ),
                     ],
-                    className="g-0",  # Remove gutters between columns
+                    className="g-0 full-height-container",  # Remove gutters between columns
                 ),
             ],
             fluid=True,
-            style={"minHeight": "calc(100vh - 160px)"}  # Account for navbar and footer
+            className="full-height-container"
         ),
-        
-        # Footer
-        html.Footer(
-            dbc.Container(
-                dbc.Row(
-                    dbc.Col(
-                        html.P(
-                            "Powered by E2B Sandbox and OpenAI - A secure environment for comprehensive data analysis",
-                            className="text-center text-muted mb-0 py-3",
-                        ),
-                        width=12,
-                    ),
-                ),
-                fluid=True,
-            ),
-            style={
-                "backgroundColor": "#f8f9fa",  # Light gray background
-                "position": "fixed",
-                "bottom": 0,
-                "width": "100%",
-                "borderTop": "1px solid #dee2e6"  # Light border at the top
-            },
-        ),
-    ],
-    style={"paddingBottom": "60px"}  # Add padding to prevent content from being hidden by footer
+    ]
 )
 
 # Set the layout
@@ -435,1606 +448,6 @@ def save_uploaded_files(content, filename, file_type="data"):
     return file_path
 
 
-def parse_analysis_results(analysis_text: str) -> Dict[str, Dict[str, Any]]:
-    """
-    Parse the raw analysis text to extract structured information
-
-    Args:
-        analysis_text: The raw text output from pickle_analyzer
-
-    Returns:
-        Dictionary with parsed analysis results
-    """
-    # Debug log the analysis text
-    log.debug(
-        "Parsing analysis results",
-        text_length=len(analysis_text),
-        text_sample=analysis_text[:200] + ("..." if len(analysis_text) > 200 else ""),
-    )
-
-    # Split into sections by file
-    sections = analysis_text.split("=" * 50)
-    sections = [s.strip() for s in sections if s.strip()]
-
-    log.debug(f"Found {len(sections)} sections in analysis text")
-
-    results = {}
-
-    for i, section in enumerate(sections):
-        lines = section.split("\n")
-        if len(lines) < 2:
-            log.warning(f"Section {i} too short to parse", lines_count=len(lines))
-            continue
-
-        # Extract filename from the first line
-        first_line = lines[0]
-        log.debug(f"Processing section {i}, first line: {first_line}")
-
-        # Check for the expected "Analysis of [filename]:" pattern
-        if "Analysis of " in first_line and ":" in first_line:
-            file_name = first_line.replace("Analysis of ", "").replace(":", "").strip()
-            log.debug(f"Extracted file name: '{file_name}'")
-        else:
-            log.warning(
-                f"Couldn't extract file name from section {i}", first_line=first_line
-            )
-            # Try a more flexible pattern
-            file_name = f"unknown_file_{i}"
-            for line in lines[:3]:  # Check first few lines
-                if ".pkl" in line or ".pickle" in line:
-                    potential_name = line.split("/")[-1].split()[0]
-                    if potential_name.endswith(".pkl") or potential_name.endswith(
-                        ".pickle"
-                    ):
-                        file_name = potential_name
-                        log.debug(f"Found potential file name: {file_name}")
-                        break
-
-        # Extract other information
-        file_info = {}
-        current_key = None
-        current_value = []
-
-        for line in lines[1:]:
-            line = line.strip()
-            if not line:
-                continue
-
-            # If it's a new key-value pair
-            if ": " in line and not line.startswith(" "):
-                # Save the previous key-value pair if it exists
-                if current_key:
-                    file_info[current_key] = (
-                        "\n".join(current_value)
-                        if len(current_value) > 1
-                        else current_value[0]
-                    )
-                    current_value = []
-
-                # Start a new key-value pair
-                current_key, value = line.split(": ", 1)
-                current_value.append(value)
-            else:
-                # Continue with the current value
-                if current_key:
-                    current_value.append(line)
-
-        # Save the last key-value pair
-        if current_key:
-            file_info[current_key] = (
-                "\n".join(current_value) if len(current_value) > 1 else current_value[0]
-            )
-
-        results[file_name] = file_info
-        log.debug(f"Added results for '{file_name}' with {len(file_info)} properties")
-
-    log.info(
-        f"Finished parsing results for {len(results)} files",
-        file_names=list(results.keys()),
-    )
-    return results
-
-
-def create_file_summary_card(file_name: str, file_info: Dict[str, Any]) -> dbc.Card:
-    """
-    Create a card with a summary of the file analysis
-
-    Args:
-        file_name: Name of the file
-        file_info: Dictionary with file information
-
-    Returns:
-        A Dash Bootstrap Components Card
-    """
-    # Extract file type for additional component generation
-    file_type = file_info.get("Type", "Unknown")
-
-    # Create list group items dynamically from file_info
-    list_group_items = []
-    for key, value in file_info.items():
-        # Skip complex nested data that would be better displayed in the additional info section
-        if isinstance(value, (dict, list, tuple)) or key in [
-            "sample_keys",
-            "sample_elements",
-            "sample_data",
-            "columns",
-            "dtypes",
-        ]:
-            continue
-
-        # Format the value as string if it's not already
-        if not isinstance(value, str):
-            value = str(value)
-
-        list_group_items.append(
-            dbc.ListGroupItem([html.Strong(f"{key}: "), html.Span(value)])
-        )
-
-    # Create card content
-    card_content = [
-        dbc.CardHeader(html.H5(file_name, className="mb-0")),
-        dbc.CardBody(
-            [
-                html.H6("Basic Information", className="card-subtitle mb-2 text-muted"),
-                dbc.ListGroup(list_group_items, className="mb-3"),
-                # Additional information based on file type
-                get_additional_info_component(file_type, file_info),
-            ]
-        ),
-    ]
-
-    return dbc.Card(card_content, className="mb-4")
-
-
-def get_additional_info_component(
-    file_type: str, file_info: Dict[str, Any]
-) -> html.Div:
-    """
-    Create appropriate components to display additional information based on file type
-
-    Args:
-        file_type: Type of the file (dict, list, DataFrame, etc.)
-        file_info: Dictionary with file information
-
-    Returns:
-        Dash HTML component
-    """
-    components = []
-
-    if "Pickle File" in file_type:
-        # Information for pickle file
-        analyzed_objects = file_info.get("Analyzed Objects", [])
-        if analyzed_objects:
-            # Display summary of analyzed objects
-            object_count = len(analyzed_objects)
-            object_types = file_info.get("Object Type Summary", {})
-
-            components.extend(
-                [
-                    html.H6("Pickle Analysis Summary", className="mt-3"),
-                    dbc.ListGroup(
-                        [
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Objects Found: "),
-                                    html.Span(str(object_count)),
-                                ]
-                            ),
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Object Types: "),
-                                    html.Span(
-                                        ", ".join(
-                                            [
-                                                f"{k} ({v})"
-                                                for k, v in object_types.items()
-                                            ]
-                                        )
-                                    ),
-                                ]
-                            ),
-                        ],
-                        className="mb-3",
-                    ),
-                ]
-            )
-
-            # Create cards for each object - directly visible without collapsible panels
-            object_cards = []
-            for i, obj in enumerate(analyzed_objects):
-                obj_type = obj.get("Object Type", "Unknown")
-
-                # Create list items for each property
-                obj_details = []
-                for key, value in obj.items():
-                    if key not in ["Object Index"]:
-                        obj_details.append(
-                            dbc.ListGroupItem(
-                                [html.Strong(f"{key}: "), html.Span(str(value))]
-                            )
-                        )
-
-                # Create card for this object - directly visible
-                object_cards.append(
-                    dbc.Card(
-                        [
-                            dbc.CardHeader(
-                                html.H6(
-                                    f"Object #{i + 1}: {obj_type}", className="mb-0"
-                                )
-                            ),
-                            dbc.CardBody([dbc.ListGroup(obj_details)]),
-                        ],
-                        className="mb-3",
-                    )
-                )
-
-            components.append(
-                html.Div(
-                    [
-                        html.H6("Analyzed Objects", className="mt-3"),
-                        html.Div(object_cards),
-                    ]
-                )
-            )
-        else:
-            # Show raw output if no objects were parsed
-            raw_output = file_info.get("Raw Output", "No output available")
-            components.append(
-                html.Div(
-                    [
-                        html.H6("Raw Analysis Output", className="mt-3"),
-                        dbc.Card(
-                            dbc.CardBody(
-                                html.Pre(
-                                    raw_output,
-                                    style={"maxHeight": "300px", "overflowY": "auto"},
-                                )
-                            ),
-                            className="mb-3",
-                        ),
-                    ]
-                )
-            )
-    elif file_type == "dict":
-        # Information for dictionary
-        keys_count = file_info.get("Number of keys", "Unknown")
-        key_types = file_info.get("Key types", "Unknown")
-        value_types = file_info.get("Value types", "Unknown")
-        sample_keys = file_info.get("Sample keys", "Unknown")
-
-        components.extend(
-            [
-                html.H6("Dictionary Details", className="mt-3"),
-                dbc.ListGroup(
-                    [
-                        dbc.ListGroupItem(
-                            [html.Strong("Number of keys: "), html.Span(keys_count)]
-                        ),
-                        dbc.ListGroupItem(
-                            [html.Strong("Key types: "), html.Span(key_types)]
-                        ),
-                        dbc.ListGroupItem(
-                            [html.Strong("Value types: "), html.Span(value_types)]
-                        ),
-                        dbc.ListGroupItem(
-                            [html.Strong("Sample keys: "), html.Span(str(sample_keys))]
-                        ),
-                    ],
-                    className="mb-3",
-                ),
-            ]
-        )
-
-        # Create a pie chart of value types if available
-        if isinstance(value_types, str) and "," in value_types:
-            try:
-                value_type_list = [vt.strip() for vt in value_types.split(",")]
-                value_counts = {vt: 1 for vt in value_type_list}
-
-                fig = px.pie(
-                    names=list(value_counts.keys()),
-                    values=list(value_counts.values()),
-                    title="Value Types Distribution",
-                )
-
-                components.append(dcc.Graph(figure=fig, className="mt-3"))
-            except Exception:
-                pass
-
-    elif file_type == "list" or file_type == "tuple":
-        # Information for list or tuple
-        length = file_info.get("Length", "Unknown")
-        element_types = file_info.get("Element types", "Unknown")
-        sample_elements = file_info.get("Sample elements", "Unknown")
-
-        components.extend(
-            [
-                html.H6(f"{file_type.capitalize()} Details", className="mt-3"),
-                dbc.ListGroup(
-                    [
-                        dbc.ListGroupItem([html.Strong("Length: "), html.Span(length)]),
-                        dbc.ListGroupItem(
-                            [html.Strong("Element types: "), html.Span(element_types)]
-                        ),
-                        dbc.ListGroupItem(
-                            [
-                                html.Strong("Sample elements: "),
-                                html.Span(str(sample_elements)),
-                            ]
-                        ),
-                    ],
-                    className="mb-3",
-                ),
-            ]
-        )
-
-    elif file_type == "DataFrame":
-        # Information for DataFrame
-        shape = file_info.get("Shape", "Unknown")
-        columns = file_info.get("Columns", "Unknown")
-
-        components.extend(
-            [
-                html.H6("DataFrame Details", className="mt-3"),
-                dbc.ListGroup(
-                    [
-                        dbc.ListGroupItem([html.Strong("Shape: "), html.Span(shape)]),
-                        dbc.ListGroupItem(
-                            [html.Strong("Columns: "), html.Span(str(columns))]
-                        ),
-                    ],
-                    className="mb-3",
-                ),
-            ]
-        )
-
-        # Try to parse and display a sample of the dataframe
-        if "Sample data" in file_info:
-            components.append(html.H6("Sample Data (First 5 rows):", className="mt-3"))
-            try:
-                if isinstance(file_info["Sample data"], dict):
-                    sample_data = file_info["Sample data"]
-                else:
-                    # Try to parse from string (simplified)
-                    sample_text = file_info["Sample data"]
-                    if sample_text.startswith("{") and sample_text.endswith("}"):
-                        sample_data = json.loads(sample_text.replace("'", '"'))
-                    else:
-                        raise ValueError("Cannot parse sample data")
-
-                # Create a table from the sample data
-                table_header = [html.Tr([html.Th(col) for col in sample_data.keys()])]
-
-                # Get the number of rows in the first column
-                first_col = list(sample_data.values())[0]
-                num_rows = len(first_col) if isinstance(first_col, list) else 1
-
-                # Create the table rows
-                table_body = []
-                for i in range(num_rows):
-                    table_body.append(
-                        html.Tr(
-                            [
-                                html.Td(
-                                    sample_data[col][i]
-                                    if isinstance(sample_data[col], list)
-                                    and i < len(sample_data[col])
-                                    else ""
-                                )
-                                for col in sample_data.keys()
-                            ]
-                        )
-                    )
-
-                components.append(
-                    dbc.Table(
-                        [html.Thead(table_header), html.Tbody(table_body)],
-                        bordered=True,
-                        hover=True,
-                        responsive=True,
-                    )
-                )
-            except Exception:
-                components.append(
-                    html.P("Failed to parse sample data", className="text-muted")
-                )
-
-    elif file_type == "ndarray":
-        # Information for NumPy array
-        shape = file_info.get("Shape", "Unknown")
-        dtype = file_info.get("Data type", "Unknown")
-        sample_data = file_info.get("Sample data", "Unknown")
-
-        components.extend(
-            [
-                html.H6("NumPy Array Details", className="mt-3"),
-                dbc.ListGroup(
-                    [
-                        dbc.ListGroupItem([html.Strong("Shape: "), html.Span(shape)]),
-                        dbc.ListGroupItem(
-                            [html.Strong("Data type: "), html.Span(dtype)]
-                        ),
-                        dbc.ListGroupItem(
-                            [html.Strong("Sample data: "), html.Span(str(sample_data))]
-                        ),
-                    ],
-                    className="mb-3",
-                ),
-            ]
-        )
-
-    elif file_type == "JSON" or file_type == "GeoJSON":
-        # Information for JSON/GeoJSON files
-        structure = file_info.get("Structure", "Unknown")
-
-        # Create list items with basic info
-        json_info_items = []
-
-        if structure == "Dictionary":
-            # For dictionary structure
-            keys_count = file_info.get("Number of keys", "Unknown")
-            top_keys = file_info.get("Top-level keys", [])
-
-            json_info_items.extend(
-                [
-                    dbc.ListGroupItem(
-                        [html.Strong("Structure: "), html.Span(structure)]
-                    ),
-                    dbc.ListGroupItem(
-                        [html.Strong("Number of keys: "), html.Span(str(keys_count))]
-                    ),
-                    dbc.ListGroupItem(
-                        [
-                            html.Strong("Top-level keys: "),
-                            html.Span(", ".join(str(k) for k in top_keys)),
-                        ]
-                    ),
-                ]
-            )
-
-            # Add GeoJSON specific information if available
-            if "GeoJSON Type" in file_info:
-                json_type = file_info.get("GeoJSON Type", "")
-                json_info_items.append(
-                    dbc.ListGroupItem(
-                        [html.Strong("GeoJSON Type: "), html.Span(json_type)]
-                    )
-                )
-
-                if "Features Count" in file_info:
-                    features_count = file_info.get("Features Count", 0)
-                    json_info_items.append(
-                        dbc.ListGroupItem(
-                            [
-                                html.Strong("Features Count: "),
-                                html.Span(str(features_count)),
-                            ]
-                        )
-                    )
-
-                if "Geometry Type" in file_info:
-                    geometry_type = file_info.get("Geometry Type", "Unknown")
-                    json_info_items.append(
-                        dbc.ListGroupItem(
-                            [html.Strong("Geometry Type: "), html.Span(geometry_type)]
-                        )
-                    )
-
-                if "Property Keys" in file_info:
-                    property_keys = file_info.get("Property Keys", [])
-                    if isinstance(property_keys, list):
-                        property_keys_str = ", ".join(
-                            str(k) for k in property_keys[:10]
-                        )
-                        if len(property_keys) > 10:
-                            property_keys_str += "... (and more)"
-                        json_info_items.append(
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Property Keys: "),
-                                    html.Span(property_keys_str),
-                                ]
-                            )
-                        )
-                    else:
-                        json_info_items.append(
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Property Keys: "),
-                                    html.Span(str(property_keys)),
-                                ]
-                            )
-                        )
-
-        elif structure == "List":
-            # For list structure
-            items_count = file_info.get("Number of items", 0)
-            item_type = file_info.get("Item Type", "Unknown")
-
-            json_info_items.extend(
-                [
-                    dbc.ListGroupItem(
-                        [html.Strong("Structure: "), html.Span(structure)]
-                    ),
-                    dbc.ListGroupItem(
-                        [html.Strong("Number of items: "), html.Span(str(items_count))]
-                    ),
-                    dbc.ListGroupItem(
-                        [html.Strong("Item Type: "), html.Span(item_type)]
-                    ),
-                ]
-            )
-
-            if item_type == "Dictionary" and "Sample Item Keys" in file_info:
-                sample_keys = file_info.get("Sample Item Keys", [])
-                sample_keys_str = ", ".join(str(k) for k in sample_keys[:10])
-                if len(sample_keys) > 10:
-                    sample_keys_str += "... (and more)"
-                json_info_items.append(
-                    dbc.ListGroupItem(
-                        [html.Strong("Sample Item Keys: "), html.Span(sample_keys_str)]
-                    )
-                )
-
-        components.extend(
-            [
-                html.H6(f"{file_type} Details", className="mt-3"),
-                dbc.ListGroup(json_info_items, className="mb-3"),
-            ]
-        )
-
-        # If we have a DataFrame representation, show it
-        df_key = (
-            "Properties DataFrame"
-            if file_type == "GeoJSON"
-            else "DataFrame Representation"
-        )
-        if df_key in file_info:
-            df_info = file_info[df_key]
-
-            components.extend(
-                [
-                    html.H6(f"{file_type} as DataFrame", className="mt-3"),
-                    dbc.ListGroup(
-                        [
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Shape: "),
-                                    html.Span(df_info.get("Shape", "Unknown")),
-                                ]
-                            ),
-                            dbc.ListGroupItem(
-                                [
-                                    html.Strong("Columns: "),
-                                    html.Span(
-                                        ", ".join(
-                                            str(c)
-                                            for c in df_info.get("Columns", [])[:10]
-                                        )
-                                    ),
-                                ]
-                            ),
-                        ],
-                        className="mb-3",
-                    ),
-                ]
-            )
-
-            # Show sample data if available
-            if "Sample Data" in df_info:
-                components.append(html.H6("Sample Data:", className="mt-3"))
-                sample_data = df_info.get("Sample Data", [])
-
-                if (
-                    sample_data
-                    and isinstance(sample_data, list)
-                    and len(sample_data) > 0
-                ):
-                    # Create a table from the sample data
-                    if isinstance(sample_data[0], dict):
-                        columns = list(sample_data[0].keys())
-
-                        # Table header
-                        table_header = [html.Tr([html.Th(col) for col in columns])]
-
-                        # Table rows
-                        table_body = []
-                        for row in sample_data:
-                            table_body.append(
-                                html.Tr(
-                                    [html.Td(str(row.get(col, ""))) for col in columns]
-                                )
-                            )
-
-                        components.append(
-                            dbc.Table(
-                                [html.Thead(table_header), html.Tbody(table_body)],
-                                bordered=True,
-                                hover=True,
-                                responsive=True,
-                                size="sm",
-                                className="mb-3",
-                            )
-                        )
-                    else:
-                        components.append(
-                            html.Pre(
-                                str(sample_data),
-                                style={"maxHeight": "200px", "overflowY": "auto"},
-                            )
-                        )
-
-    # Add collapsible card for the raw output
-    unique_id = hash(f"{file_type}{str(hash(str(file_info)))}")
-    components.append(
-        html.Div(
-            [
-                dbc.Button(
-                    "Show Raw Data",
-                    id={"type": "collapse-button", "index": unique_id},
-                    className="mb-3",
-                    color="secondary",
-                    size="sm",
-                ),
-                dbc.Collapse(
-                    dbc.Card(
-                        dbc.CardBody(
-                            html.Pre(
-                                json.dumps(file_info, indent=2),
-                                style={"maxHeight": "300px", "overflowY": "auto"},
-                            )
-                        )
-                    ),
-                    id={"type": "collapse", "index": unique_id},
-                    is_open=False,
-                ),
-            ]
-        )
-    )
-
-    return html.Div(components)
-
-
-@callback(
-    Output({"type": "collapse", "index": dash.dependencies.MATCH}, "is_open"),
-    [Input({"type": "collapse-button", "index": dash.dependencies.MATCH}, "n_clicks")],
-    [State({"type": "collapse", "index": dash.dependencies.MATCH}, "is_open")],
-)
-def toggle_collapse(n_clicks, is_open):
-    if n_clicks:
-        return not is_open
-    return is_open
-
-
-@callback(
-    Output({"type": "object-collapse", "index": dash.dependencies.MATCH}, "is_open"),
-    [Input({"type": "object-button", "index": dash.dependencies.MATCH}, "n_clicks")],
-    [State({"type": "object-collapse", "index": dash.dependencies.MATCH}, "is_open")],
-)
-def toggle_object_collapse(n_clicks, is_open):
-    if n_clicks:
-        return not is_open
-    return is_open
-
-
-# Define file type based on extension
-def determine_file_type(filename):
-    """
-    Determine if a file is data or context based on its extension.
-
-    Args:
-        filename: The name of the file
-
-    Returns:
-        str: "data" or "context"
-    """
-    # Get the file extension
-    ext = os.path.splitext(filename)[1].lower()
-
-    # Define data file extensions
-    data_extensions = [".pkl", ".pickle", ".csv", ".parquet", ".json", ".geojson"]
-
-    # Define context file extensions
-    context_extensions = [".txt", ".pdf", ".docx", ".doc"]
-
-    if ext in data_extensions:
-        return "data"
-    elif ext in context_extensions:
-        return "context"
-    else:
-        # Default to data for unknown extensions
-        return "data"
-
-
-@callback(
-    Output("data-output", "children"),
-    Output("loading-output", "children"),
-    Output("files-being-analyzed", "children"),
-    Output("error-message", "children"),
-    Output("data-store", "data"),
-    Output("context-output", "children"),
-    Output("context-store", "data"),
-    Input("unified-upload", "contents"),
-    Input("unified-upload", "filename"),
-    State("data-store", "data"),
-    State("context-store", "data"),
-)
-def update_unified_output(
-    contents, filenames, stored_data_results, stored_context_results
-):
-    """
-    Callback for unified file upload.
-    Files are automatically categorized and analyzed upon upload.
-
-    Returns:
-        - Data output component
-        - Loading output
-        - Files being analyzed text
-        - Error message
-        - Stored data results
-        - Context output component
-        - Stored context results
-    """
-    if contents is None or filenames is None:
-        # No file uploaded yet
-        return (
-            html.Div(),
-            "",
-            "",
-            "",
-            {},
-            html.Div("Upload context files to see extracted text."),
-            {},
-        )
-
-    # Initialize data stores if not exists
-    if stored_data_results is None:
-        stored_data_results = {}
-    if stored_context_results is None:
-        stored_context_results = {}
-
-    # Check if the callback was triggered by a file upload
-    ctx = dash.callback_context
-    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
-        return (
-            html.Div(),
-            "",
-            "",
-            "",
-            stored_data_results,
-            html.Div("Upload context files to see extracted text."),
-            stored_context_results,
-        )
-
-    # Get the trigger
-    changed_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    if changed_id != "unified-upload":
-        return (
-            html.Div(),
-            "",
-            "",
-            "",
-            stored_data_results,
-            html.Div("Upload context files to see extracted text."),
-            stored_context_results,
-        )
-
-    # Sort files by type
-    data_contents = []
-    data_filenames = []
-    context_contents = []
-    context_filenames = []
-
-    for content, filename in zip(contents, filenames):
-        file_type = determine_file_type(filename)
-        if file_type == "data":
-            data_contents.append(content)
-            data_filenames.append(filename)
-        else:  # context
-            context_contents.append(content)
-            context_filenames.append(filename)
-
-    # Process data files
-    data_output_components = []
-    new_data_results = dict(
-        stored_data_results
-    )  # Make a copy to preserve existing results
-
-    # Show the files being analyzed
-    files_display = ""
-    if data_filenames:
-        files_display = dbc.Alert(
-            [
-                html.H5("Analyzing Data Files:", className="alert-heading"),
-                html.Ul([html.Li(filename) for filename in data_filenames]),
-            ],
-            color="info",
-        )
-
-    for content, filename in zip(data_contents, data_filenames):
-        if content is None:
-            continue
-
-        # Save file to temporary directory
-        try:
-            file_path = save_uploaded_files(content, filename, "data")
-
-            # Analyze file
-            result = analyze_data_file(file_path)
-
-            if "error" in result:
-                data_output_components.append(
-                    dbc.Alert(
-                        [
-                            html.H5(f"Error analyzing {filename}"),
-                            html.P(result["error"]),
-                        ],
-                        color="danger",
-                        className="mb-3",
-                    )
-                )
-                log.error(
-                    "Error analyzing data file",
-                    error=result["error"],
-                    filename=filename,
-                )
-            else:
-                # Store analysis results
-                new_data_results[filename] = result
-
-                # Format analysis results for display
-                file_card = create_file_summary_card(filename, result)
-                data_output_components.append(file_card)
-
-        except Exception as e:
-            data_output_components.append(
-                dbc.Alert(
-                    [
-                        html.H5(f"Error processing {filename}"),
-                        html.P(str(e)),
-                    ],
-                    color="danger",
-                    className="mb-3",
-                )
-            )
-            log.error(
-                "Exception while processing data file", error=str(e), filename=filename
-            )
-
-    # Process context files
-    context_output_components = []
-    new_context_results = dict(
-        stored_context_results
-    )  # Make a copy to preserve existing results
-
-    for content, filename in zip(context_contents, context_filenames):
-        if content is None:
-            continue
-
-        # Save file to temporary directory
-        try:
-            file_path = save_uploaded_files(content, filename, "context")
-
-            # Extract text from context file
-            result = extract_text_from_file(file_path)
-            text_content = result.get("text", "")
-
-            # Store the extracted text
-            new_context_results[filename] = text_content
-
-            # Create a card to display file information and preview
-            context_card = dbc.Card(
-                [
-                    dbc.CardHeader(
-                        [
-                            html.H5(
-                                [
-                                    html.I(className="fas fa-file-alt me-2"),
-                                    filename,
-                                ],
-                                className="mb-0",
-                            )
-                        ]
-                    ),
-                    dbc.CardBody(
-                        [
-                            html.P("Text Preview:"),
-                            dbc.Card(
-                                dbc.CardBody(
-                                    html.P(
-                                        text_content[:500] + "..."
-                                        if len(text_content) > 500
-                                        else text_content
-                                    )
-                                ),
-                                className="bg-light",
-                            ),
-                        ]
-                    ),
-                ],
-                className="mb-3",
-            )
-            context_output_components.append(context_card)
-
-        except Exception as e:
-            context_output_components.append(
-                dbc.Alert(
-                    [
-                        html.H5(f"Error processing {filename}"),
-                        html.P(str(e)),
-                    ],
-                    color="danger",
-                    className="mb-3",
-                )
-            )
-            log.error(
-                "Exception while processing context file",
-                error=str(e),
-                filename=filename,
-            )
-
-    # Format data output
-    data_output = html.Div("No valid data files uploaded.")
-    if data_output_components:
-        data_output = dbc.Row(
-            [dbc.Col(component, md=6, lg=4) for component in data_output_components]
-        )
-
-    # Format context output
-    context_output = html.Div("Upload context files to see extracted text.")
-    if context_output_components:
-        context_output = dbc.Row(
-            [dbc.Col(component, md=6) for component in context_output_components]
-        )
-
-    return (
-        data_output,
-        "",
-        files_display,
-        "",
-        new_data_results,
-        context_output,
-        new_context_results,
-    )
-
-
-@callback(
-    Output("data-output", "children", allow_duplicate=True),
-    Output("loading-output", "children", allow_duplicate=True),
-    Output("files-being-analyzed", "children", allow_duplicate=True),
-    Output("error-message", "children", allow_duplicate=True),
-    Output("data-store", "data", allow_duplicate=True),
-    Input("unified-upload", "contents"),
-    Input("unified-upload", "filename"),
-    State("data-store", "data"),
-    prevent_initial_call=True,
-)
-def update_data_output(data_contents, data_filenames, stored_data_results):
-    """
-    Callback for data file upload (compatibility).
-    """
-    if data_contents is None or data_filenames is None:
-        # No file uploaded yet
-        return html.Div(), "", "", "", {}
-
-    # Initialize data store if not exists
-    if stored_data_results is None:
-        stored_data_results = {}
-
-    # Filter to only data files
-    data_contents_filtered = []
-    data_filenames_filtered = []
-
-    for content, filename in zip(data_contents, data_filenames):
-        if determine_file_type(filename) == "data":
-            data_contents_filtered.append(content)
-            data_filenames_filtered.append(filename)
-
-    # The rest of your existing function here...
-    # ... (continue with original implementation using data_contents_filtered and data_filenames_filtered)
-
-    # Placeholder return - this should be updated with actual implementation
-    return html.Div(), "", "", "", stored_data_results
-
-
-@callback(
-    Output("context-output", "children", allow_duplicate=True),
-    Output("context-store", "data", allow_duplicate=True),
-    Input("unified-upload", "contents"),
-    Input("unified-upload", "filename"),
-    State("context-store", "data"),
-    prevent_initial_call=True,
-)
-def update_context_output(context_contents, context_filenames, stored_context_results):
-    """
-    Callback for context file upload (compatibility).
-    """
-    if context_contents is None or context_filenames is None:
-        # No file uploaded yet
-        return html.Div("Upload context files to see extracted text."), {}
-
-    # Initialize data store if not exists
-    if stored_context_results is None:
-        stored_context_results = {}
-
-    # Filter to only context files
-    context_contents_filtered = []
-    context_filenames_filtered = []
-
-    for content, filename in zip(context_contents, context_filenames):
-        if determine_file_type(filename) == "context":
-            context_contents_filtered.append(content)
-            context_filenames_filtered.append(filename)
-
-    # The rest of your existing function here...
-    # ... (continue with original implementation using context_contents_filtered and context_filenames_filtered)
-
-    # Placeholder return - this should be updated with actual implementation
-    return html.Div(
-        "Upload context files to see extracted text."
-    ), stored_context_results
-
-
-@callback(
-    Output("correlation-output", "children"),
-    Output("correlation-store", "data"),
-    Output("correlation-loading-output", "children"),
-    Input("analyze-correlations-button", "n_clicks"),
-    State("data-store", "data"),
-)
-def update_correlation_analysis(n_clicks, data_results):
-    """
-    Callback for updating the correlation analysis.
-    Returns:
-        - Correlation output component
-        - Correlation results data
-        - Loading output (for the spinner)
-    """
-    # Check if callback was triggered
-    if n_clicks is None or n_clicks == 0 or not data_results:
-        log.debug(
-            "Correlation analysis not triggered",
-            n_clicks=n_clicks,
-            has_data=bool(data_results),
-        )
-        return (
-            html.Div(
-                "Click 'Analyze Correlations' to find connections between your data files."
-            ),
-            {},
-            "",
-        )
-
-    # Check if we have data results
-    if not data_results or len(data_results) < 2:
-        log.warning(
-            "Not enough data files for correlation analysis UI",
-            file_count=len(data_results) if data_results else 0,
-        )
-        return (
-            dbc.Alert(
-                "Upload at least two data files to analyze correlations.",
-                color="warning",
-            ),
-            {},
-            "",
-        )
-
-    try:
-        log.info(
-            "Starting correlation analysis UI update", data_file_count=len(data_results)
-        )
-        # Find correlations
-        correlation_results = correlate_data_files(data_results)
-
-        log.info(
-            "Processing correlation results for UI display",
-            keys=list(correlation_results.keys()),
-            has_error="error" in correlation_results,
-            has_message="message" in correlation_results,
-        )
-
-        if "error" in correlation_results:
-            log.warning(
-                "Error in correlation results", error=correlation_results["error"]
-            )
-            return dbc.Alert(correlation_results["error"], color="warning"), {}, ""
-
-        # Create output components for correlations
-        output_components = []
-        # Track if any correlations were found
-        found_correlations = False
-
-        # Shared columns
-        shared_cols = correlation_results.get("shared_columns", {})
-        if shared_cols:
-            found_correlations = True
-            log.info("Processing shared columns for UI", count=len(shared_cols))
-            shared_cols_items = []
-            for col, files in shared_cols.items():
-                shared_cols_items.append(
-                    dbc.ListGroupItem(
-                        [html.Strong(col), ": Found in ", html.Span(", ".join(files))]
-                    )
-                )
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(html.H5("Shared Columns", className="mb-0")),
-                        dbc.CardBody(
-                            [dbc.ListGroup(shared_cols_items, className="mb-3")]
-                        ),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # Potential join keys
-        joins = correlation_results.get("potential_joins", [])
-        if joins:
-            found_correlations = True
-            log.info("Processing potential join keys for UI", count=len(joins))
-            joins_items = []
-            for join in joins:
-                joins_items.append(
-                    dbc.ListGroupItem(
-                        [
-                            html.Strong(join["column"]),
-                            ": Could join ",
-                            html.Span(", ".join(join["files"])),
-                        ]
-                    )
-                )
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H5("Potential Join Keys", className="mb-0")
-                        ),
-                        dbc.CardBody([dbc.ListGroup(joins_items, className="mb-3")]),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # Similar sized files
-        similar_sizes = correlation_results.get("similar_sizes", [])
-        if similar_sizes:
-            found_correlations = True
-            log.info("Processing similar sized files for UI", count=len(similar_sizes))
-            size_items = []
-            for size_info in similar_sizes:
-                size_items.append(
-                    dbc.ListGroupItem(
-                        [
-                            html.Span(", ".join(size_info["files"])),
-                            ": Row counts of ",
-                            html.Span(
-                                ", ".join(
-                                    [str(count) for count in size_info["row_counts"]]
-                                )
-                            ),
-                        ]
-                    )
-                )
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H5("Files with Similar Sizes", className="mb-0")
-                        ),
-                        dbc.CardBody([dbc.ListGroup(size_items, className="mb-3")]),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # Common data types
-        common_types = correlation_results.get("common_data_types", {})
-        if common_types:
-            found_correlations = True
-            log.info("Processing common data types for UI", count=len(common_types))
-            types_components = []
-
-            for files_key, types in common_types.items():
-                type_items = []
-                for col, dtype in types.items():
-                    type_items.append(
-                        dbc.ListGroupItem([html.Strong(col), ": ", html.Span(dtype)])
-                    )
-
-                types_components.append(
-                    dbc.Card(
-                        [
-                            dbc.CardHeader(html.H6(files_key, className="mb-0")),
-                            dbc.CardBody([dbc.ListGroup(type_items)]),
-                        ],
-                        className="mb-3",
-                    )
-                )
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(html.H5("Common Data Types", className="mb-0")),
-                        dbc.CardBody([html.Div(types_components)]),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # LLM-suggested join keys (NEW SECTION)
-        llm_joins = correlation_results.get("llm_suggested_joins", [])
-        if llm_joins:
-            found_correlations = True
-            log.info(
-                "Processing LLM-suggested join keys for UI", raw_count=len(llm_joins)
-            )
-            # Sort by confidence score in descending order
-            llm_joins = sorted(
-                llm_joins, key=lambda x: x.get("confidence", 0), reverse=True
-            )
-            log.debug(
-                "Sorted LLM joins",
-                first_confidence=llm_joins[0].get("confidence", 0)
-                if llm_joins
-                else "N/A",
-            )
-
-            llm_joins_items = []
-            for join in llm_joins:
-                # Format the confidence as a percentage
-                confidence = join.get("confidence", 0)
-                confidence_str = f"{confidence * 100:.0f}%" if confidence else "Unknown"
-
-                # Log simplified information about this join
-                log.debug(f"Processing LLM join with confidence {confidence_str}")
-
-                # Create badge with appropriate color based on confidence
-                if confidence >= 0.7:
-                    confidence_badge = dbc.Badge(
-                        confidence_str, color="success", className="me-1"
-                    )
-                elif confidence >= 0.4:
-                    confidence_badge = dbc.Badge(
-                        confidence_str, color="warning", className="me-1"
-                    )
-                else:
-                    confidence_badge = dbc.Badge(
-                        confidence_str, color="secondary", className="me-1"
-                    )
-
-                llm_joins_items.append(
-                    dbc.ListGroupItem(
-                        [
-                            html.Strong(
-                                f"{join.get('source_file', 'Unknown')}:{join.get('source_column', 'Unknown')}"
-                            ),
-                            " ⟷ ",
-                            html.Strong(
-                                f"{join.get('target_file', 'Unknown')}:{join.get('target_column', 'Unknown')}"
-                            ),
-                            html.Br(),
-                            confidence_badge,
-                            html.Span(
-                                join.get("explanation", "No explanation provided"),
-                                className="text-muted small",
-                            ),
-                        ]
-                    )
-                )
-
-            log.info("Created LLM joins UI items", count=len(llm_joins_items))
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            [
-                                html.H5("AI-Suggested Join Keys", className="mb-0"),
-                                html.Small(
-                                    "Based on column names and sample values analysis",
-                                    className="text-muted",
-                                ),
-                            ]
-                        ),
-                        dbc.CardBody(
-                            [dbc.ListGroup(llm_joins_items, className="mb-3")]
-                        ),
-                    ],
-                    className="mb-4 border-primary",  # Highlight this card with a primary border
-                )
-            )
-        elif (
-            "llm_no_joins_found" in correlation_results
-            and correlation_results["llm_no_joins_found"]
-        ):
-            # LLM was called but didn't find any potential join keys
-            # Don't set found_correlations = True here as this isn't a positive correlation finding
-            log.info("LLM found no join keys, displaying informational card")
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            [
-                                html.H5("AI-Suggested Join Keys", className="mb-0"),
-                                html.Small(
-                                    "Based on column names and sample values analysis",
-                                    className="text-muted",
-                                ),
-                            ]
-                        ),
-                        dbc.CardBody(
-                            [
-                                html.P(
-                                    [
-                                        html.I(
-                                            className="fas fa-info-circle me-2 text-info"
-                                        ),
-                                        "No potential join keys were identified by the AI analysis. This could mean:",
-                                    ],
-                                    className="mb-2",
-                                ),
-                                html.Ul(
-                                    [
-                                        html.Li(
-                                            "The datasets may not be directly relatable"
-                                        ),
-                                        html.Li(
-                                            "The column names and sample values don't provide enough context"
-                                        ),
-                                        html.Li(
-                                            "The relationships may be more complex than direct column matches"
-                                        ),
-                                    ],
-                                    className="mb-3",
-                                ),
-                                html.P(
-                                    "Consider examining the data manually or providing more context files to help identify potential relationships.",
-                                    className="small text-muted",
-                                ),
-                            ]
-                        ),
-                    ],
-                    className="mb-4 border-info",
-                )
-            )
-        elif "llm_analysis_error" in correlation_results:
-            # Show error if LLM analysis failed
-            log.warning(
-                "LLM analysis error found",
-                error=correlation_results["llm_analysis_error"],
-            )
-            output_components.append(
-                dbc.Alert(
-                    [
-                        html.H6("AI Join Analysis Error", className="alert-heading"),
-                        html.P(correlation_results["llm_analysis_error"]),
-                    ],
-                    color="warning",
-                    className="mb-4",
-                )
-            )
-
-        # Display a message if no correlations of any kind were found
-        if not found_correlations:
-            log.warning(
-                "No correlations found for display",
-                correlation_keys=list(correlation_results.keys()),
-            )
-            output_components.append(
-                dbc.Alert(
-                    [
-                        html.H5("No Correlations Found", className="alert-heading"),
-                        html.P(
-                            "No correlations or relationships were found between the uploaded files. This could be because:"
-                        ),
-                        html.Ul(
-                            [
-                                html.Li("The datasets are completely unrelated"),
-                                html.Li(
-                                    "The column names are different and don't share common patterns"
-                                ),
-                                html.Li(
-                                    "The data structures are too dissimilar to identify relationships automatically"
-                                ),
-                            ]
-                        ),
-                        html.P(
-                            "Try adding more context files or examining the data manually to identify potential relationships."
-                        ),
-                    ],
-                    color="info",
-                    className="mb-4",
-                )
-            )
-
-        log.info(
-            "Correlation UI update complete",
-            component_count=len(output_components),
-            found_correlations=found_correlations,
-        )
-
-        # Return with empty loading output to clear spinner
-        return html.Div(output_components), correlation_results, ""
-
-    except Exception as e:
-        log.error("Error in correlation analysis", error=str(e))
-        return (
-            dbc.Alert(
-                [
-                    html.H5("Error in Correlation Analysis"),
-                    html.P(str(e)),
-                    html.Pre(traceback.format_exc()),
-                ],
-                color="danger",
-            ),
-            {},
-            "",
-        )
-
-
-@callback(
-    Output("ai-plan-output", "children"),
-    Output("ai-plan-store", "data"),
-    Output("plan-loading-output", "children"),
-    Input("generate-plan-button", "n_clicks"),
-    State("data-store", "data"),
-    State("context-store", "data"),
-    State("correlation-store", "data"),
-)
-def update_analysis_plan(n_clicks, data_results, context_results, correlation_results):
-    """
-    Callback for generating AI analysis plan.
-    Returns:
-        - AI plan output component
-        - AI plan data
-        - Loading output (for the spinner)
-    """
-    if n_clicks is None or n_clicks == 0 or not data_results:
-        return (
-            html.Div("Click 'Generate Analysis Plan' to create an AI-powered plan."),
-            {},
-            "",
-        )
-
-    # Check if we have data results
-    if not data_results:
-        return (
-            dbc.Alert(
-                "Upload data files first before generating an analysis plan.",
-                color="warning",
-            ),
-            {},
-            "",
-        )
-
-    try:
-        # Generate analysis plan
-        plan_results = generate_analysis_plan(
-            data_results, context_results or {}, correlation_results or {}
-        )
-
-        if "error" in plan_results:
-            return (
-                dbc.Alert(
-                    [
-                        html.H5("Error Generating Analysis Plan"),
-                        html.P(plan_results["error"]),
-                        html.Pre(plan_results.get("traceback", "")),
-                    ],
-                    color="danger",
-                ),
-                {},
-                "",
-            )
-
-        # Create output components for the plan
-        output_components = []
-
-        # Add timestamp
-        if "timestamp" in plan_results:
-            output_components.append(
-                dbc.Alert(
-                    [
-                        html.Strong("Generated at: "),
-                        html.Span(plan_results["timestamp"]),
-                    ],
-                    color="info",
-                    className="mb-3",
-                )
-            )
-
-        # Analysis plan
-        if "analysis_plan" in plan_results:
-            # Handle different formats of analysis_plan (string or list)
-            if isinstance(plan_results["analysis_plan"], str):
-                plan_text = plan_results["analysis_plan"]
-                # Try to split on numbered items
-                plan_items = re.split(r"\n\d+\.|\n\-", plan_text)
-                if len(plan_items) > 1:
-                    plan_items = [item.strip() for item in plan_items if item.strip()]
-                    plan_content = html.Ol([html.Li(item) for item in plan_items])
-                else:
-                    plan_content = html.Pre(plan_text)
-            elif isinstance(plan_results["analysis_plan"], list):
-                plan_content = html.Ol(
-                    [html.Li(item) for item in plan_results["analysis_plan"]]
-                )
-            else:
-                plan_content = html.Pre(str(plan_results["analysis_plan"]))
-
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(html.H5("Analysis Plan", className="mb-0")),
-                        dbc.CardBody([plan_content]),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # Analysis code
-        if "analysis_code" in plan_results:
-            output_components.append(
-                dbc.Card(
-                    [
-                        dbc.CardHeader(
-                            html.H5("Generated Python Code", className="mb-0")
-                        ),
-                        dbc.CardBody(
-                            [
-                                html.Button(
-                                    "Execute in E2B Sandbox",
-                                    id="execute-code-button",
-                                    className="btn btn-success mb-3",
-                                ),
-                                html.Pre(
-                                    plan_results["analysis_code"],
-                                    style={
-                                        "backgroundColor": "#f8f9fa",
-                                        "padding": "15px",
-                                        "borderRadius": "5px",
-                                        "maxHeight": "500px",
-                                        "overflowY": "auto",
-                                    },
-                                ),
-                            ]
-                        ),
-                    ],
-                    className="mb-4",
-                )
-            )
-
-        # Return with empty loading output to clear spinner
-        return html.Div(output_components), plan_results, ""
-
-    except Exception as e:
-        log.error("Error generating analysis plan", error=str(e))
-        return (
-            dbc.Alert(
-                [
-                    html.H5("Error Generating Analysis Plan"),
-                    html.P(str(e)),
-                    html.Pre(traceback.format_exc()),
-                ],
-                color="danger",
-            ),
-            {},
-            "",
-        )
-
-
-@callback(
-    Output("ai-results-output", "children"),
-    Input("execute-code-button", "n_clicks"),
-    State("ai-plan-store", "data"),
-    State("data-store", "data"),
-)
 def update_execution_results(n_clicks, plan_data, data_store):
     """
     Callback for executing the generated code in E2B sandbox.
@@ -3229,8 +1642,7 @@ def generate_analysis_plan(
 
     correlation_summary = json.dumps(correlations, indent=2)
 
-    prompt = f"""
-As a data science assistant, analyze the following datasets and context information to create an analysis plan.
+    prompt = f"""As a data science assistant, analyze the following datasets and context information to create an analysis plan.
 
 DATA FILES:
 {data_summary}
@@ -3253,11 +1665,9 @@ Respond with a JSON object containing:
 - "analysis_code": Complete Python code that could be executed
 
 In "analysis_code":
-
 - The code should be self-contained and handle reading the files from their paths.
 - It should contain no placeholders or truncations, only valid Python.
-- Avoid triple backticks at the start or the end, just issue Python straightaway.
-"""
+- Avoid triple backticks at the start or the end, just issue Python straightaway."""
 
     try:
         response = openai_client.chat.completions.create(
