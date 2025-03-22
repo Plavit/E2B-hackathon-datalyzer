@@ -1,8 +1,14 @@
 import os
-from typing import List
+from typing import List, Dict, Any
+import structlog
+import pickle
+import sys
 
 from dotenv import load_dotenv
 from e2b_code_interpreter import Sandbox  # type: ignore
+
+
+log = structlog.get_logger()
 
 
 def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None:
@@ -34,13 +40,78 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
         if verbose:
             print(f"Uploading {file_path} to sandbox...")
 
+        # Verify the file locally first
+        try:
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+                file_size = len(file_content)
+
+            if verbose:
+                print(f"Local file size: {file_size} bytes")
+                print(
+                    f"Local file header (first 20 bytes): {' '.join(f'{b:02x}' for b in file_content[:20])}"
+                )
+
+                # Try to load locally to verify it's a valid pickle
+                try:
+                    with open(file_path, "rb") as f:
+                        local_data = pickle.load(f)
+                    print(
+                        f"Successfully loaded pickle locally: {type(local_data).__name__}"
+                    )
+                except Exception as e:
+                    print(f"Error loading pickle locally: {str(e)}")
+        except Exception as e:
+            print(f"Error reading local file {file_path}: {str(e)}")
+            continue
+
         # Convert Path object to string if needed
         file_path_str = str(file_path)
-        remote_path = code_interpreter.files.write(file_path_str)
-        remote_paths.append((os.path.basename(file_path_str), remote_path.path))
+        file_name = os.path.basename(file_path_str)
+        remote_path = f"/tmp/{file_name}"
 
-        if verbose:
-            print(f"  Uploaded to {remote_path.path}")
+        try:
+            # Create a temporary file in the sandbox with the pickle content
+            code = f"""
+import os
+
+# Ensure directory exists
+os.makedirs('/tmp', exist_ok=True)
+
+# Write pickle data to file
+with open('{remote_path}', 'wb') as f:
+    f.write({repr(file_content)})
+    
+# Verify file was written
+file_size = os.path.getsize('{remote_path}')
+print(f"File written to {remote_path} ({file_size} bytes)")
+"""
+            if verbose:
+                print("Executing code to create file:")
+                print(code)
+
+            result = code_interpreter.run_code(code)
+
+            if verbose:
+                print(
+                    f"Result: {result.text if hasattr(result, 'text') else 'No output'}"
+                )
+
+            remote_paths.append((file_name, remote_path))
+
+            if verbose:
+                print(f"  Uploaded to {remote_path}")
+
+        except Exception as e:
+            print(f"Error uploading {file_path}: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
+            continue
+
+    if not remote_paths:
+        print("No files were successfully uploaded. Exiting.")
+        return
 
     # Generate and execute code to analyze the pickle files
     analysis_code = _generate_analysis_code(remote_paths)
@@ -105,9 +176,34 @@ from typing import Any, Dict, List
 def analyze_pickle(file_path: str) -> Dict[str, Any]:
     '''Analyze a pickle file and return its properties.'''
     try:
-        with open(file_path, 'rb') as f:
-            data = pickle.load(f)
+        print(f"Opening file: {file_path} (size: {os.path.getsize(file_path)} bytes)")
         
+        # Debug: Read and print file header
+        with open(file_path, 'rb') as f:
+            header_bytes = f.read(30)
+            print(f"File header (first 30 bytes): {' '.join(f'{b:02x}' for b in header_bytes)}")
+            f.seek(0)
+            
+            # Try different pickle protocols
+            for protocol in range(5):
+                try:
+                    print(f"Attempting pickle protocol {protocol}...")
+                    f.seek(0)
+                    data = pickle.load(f)
+                    print(f"Successfully loaded with protocol {protocol}")
+                    break
+                except Exception as e:
+                    print(f"Protocol {protocol} failed: {str(e)}")
+                    if protocol == 4:  # Last protocol attempt
+                        print("All protocols failed, returning error")
+                        return {
+                            'file_path': file_path,
+                            'error': f"Pickle load error: {str(e)}",
+                            'file_size': os.path.getsize(file_path),
+                            'traceback': str(sys.exc_info()[2])
+                        }
+        
+        # If we got here, one of the protocols worked
         result = {
             'file_path': file_path,
             'type': type(data).__name__,

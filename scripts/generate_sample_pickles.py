@@ -132,7 +132,7 @@ def main():
 
     print("\nAll sample pickle files generated in the 'samples' directory.")
     print("You can analyze them with:")
-    print("e2b-hackathon samples/*.pickle")
+    print("e2b-hackathon analyze samples/*.pickle")
 
 
 if __name__ == "__main__":
