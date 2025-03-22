@@ -67,7 +67,8 @@ Start of hackathon when we refined the idea: ca. 🕚11AM:
 ![photo_2025-03-22_15-35-09](https://github.com/user-attachments/assets/a2bd3ff6-10f8-4c2f-a484-ed2440a2852c)
 
 End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was submission deadline how did you guess?):
-TBD image
+![photo_2025-03-22_17-48-36](https://github.com/user-attachments/assets/2ebcedd4-dfcd-46e8-a624-cb8c7c9b2e01)
+
 
 ## Features
 
