@@ -13,11 +13,17 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 import traceback
-import logging
+import structlog
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structlog
+structlog.configure(
+    processors=[
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer(),
+    ],
+)
+logger = structlog.get_logger()
 
 
 def execute_code_with_data(
@@ -290,7 +296,17 @@ if __name__ == "__main__":
 
     # Set up logging based on verbosity
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        # structlog doesn't have a direct equivalent to setLevel
+        # Instead we'll configure it to include DEBUG level logs
+        structlog.configure(
+            processors=[
+                structlog.processors.add_log_level,
+                structlog.processors.TimeStamper(fmt="iso"),
+                structlog.dev.ConsoleRenderer(),
+            ],
+            wrapper_class=structlog.make_filtering_bound_logger("DEBUG"),
+        )
+        logger.debug("Debug logging enabled")
 
     # Read code from file
     try:

@@ -1,12 +1,22 @@
 import os
+import json
 from typing import List, Dict, Any
 import structlog
 import pickle
 import sys
+import traceback
 
 from dotenv import load_dotenv
 from e2b_code_interpreter import Sandbox  # type: ignore
 
+# Configure structlog
+# Set up structlog to output JSON for consistency
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer(),
+    ],
+)
 
 log = structlog.get_logger()
 
@@ -25,20 +35,18 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
     # Initialize the code interpreter
     api_key = os.environ.get("E2B_API_KEY")
     if not api_key:
+        log.error("E2B_API_KEY not set in environment variables")
         raise ValueError(
             "E2B_API_KEY not set in environment variables. Please add it to your .env file."
         )
 
-    if verbose:
-        print("Initializing E2B sandbox...")
-
+    log.debug("Initializing E2B sandbox")
     code_interpreter = Sandbox()
 
     # Upload each pickle file to the sandbox
     remote_paths = []
     for file_path in pickle_files:
-        if verbose:
-            print(f"Uploading {file_path} to sandbox...")
+        log.debug("Processing pickle file", file_path=file_path)
 
         # Verify the file locally first
         try:
@@ -46,23 +54,23 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
                 file_content = f.read()
                 file_size = len(file_content)
 
-            if verbose:
-                print(f"Local file size: {file_size} bytes")
-                print(
-                    f"Local file header (first 20 bytes): {' '.join(f'{b:02x}' for b in file_content[:20])}"
-                )
+            log.debug(
+                "Local file info",
+                file_size=file_size,
+                file_header_hex=" ".join(f"{b:02x}" for b in file_content[:20]),
+            )
 
-                # Try to load locally to verify it's a valid pickle
-                try:
-                    with open(file_path, "rb") as f:
-                        local_data = pickle.load(f)
-                    print(
-                        f"Successfully loaded pickle locally: {type(local_data).__name__}"
-                    )
-                except Exception as e:
-                    print(f"Error loading pickle locally: {str(e)}")
+            # Try to load locally to verify it's a valid pickle
+            try:
+                with open(file_path, "rb") as f:
+                    local_data = pickle.load(f)
+                log.debug(
+                    "Successfully loaded pickle locally", type=type(local_data).__name__
+                )
+            except Exception as e:
+                log.warning("Error loading pickle locally", error=str(e))
         except Exception as e:
-            print(f"Error reading local file {file_path}: {str(e)}")
+            log.error("Error reading local file", file_path=file_path, error=str(e))
             continue
 
         # Convert Path object to string if needed
@@ -86,71 +94,100 @@ with open('{remote_path}', 'wb') as f:
 file_size = os.path.getsize('{remote_path}')
 print(f"File written to {remote_path} ({file_size} bytes)")
 """
-            if verbose:
-                print("Executing code to create file:")
-                print(code)
+            log.debug(
+                "Executing code to create file in sandbox", remote_path=remote_path
+            )
 
             result = code_interpreter.run_code(code)
 
-            if verbose:
-                print(
-                    f"Result: {result.text if hasattr(result, 'text') else 'No output'}"
-                )
+            if hasattr(result, "text"):
+                log.debug("Sandbox file creation result", result=result.text)
 
             remote_paths.append((file_name, remote_path))
-
-            if verbose:
-                print(f"  Uploaded to {remote_path}")
+            log.debug(
+                "File uploaded to sandbox", file_name=file_name, remote_path=remote_path
+            )
 
         except Exception as e:
-            print(f"Error uploading {file_path}: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
+            log.error(
+                "Error uploading file to sandbox",
+                file_path=file_path,
+                error=str(e),
+                traceback=traceback.format_exc(),
+            )
             continue
 
     if not remote_paths:
-        print("No files were successfully uploaded. Exiting.")
+        log.error("No files were successfully uploaded")
         return
 
     # Generate and execute code to analyze the pickle files
     analysis_code = _generate_analysis_code(remote_paths)
+    log.debug("Generated analysis code", code_length=len(analysis_code))
 
-    if verbose:
-        print("Executing analysis code...")
-        print("-" * 40)
-        print(analysis_code)
-        print("-" * 40)
+    def stdout_handler(stdout: Any) -> None:
+        """Handle stdout from sandbox execution"""
+        # Convert to string if it's not already a string
+        stdout_text = str(stdout) if not isinstance(stdout, str) else stdout
 
-    # Use run_code instead of notebook.exec_cell
+        try:
+            # Only print structured output, log debugging info
+            if stdout_text.strip().startswith("="):
+                # This is our structured separator, output it directly
+                print(stdout_text.rstrip())
+            elif any(
+                key in stdout_text
+                for key in [
+                    "Object Type:",
+                    "Size (bytes):",
+                    "Length:",
+                    "Shape:",
+                    "Number of Keys:",
+                ]
+            ):
+                # This is part of our structured output format
+                print(stdout_text.rstrip())
+            else:
+                # This is debug information
+                log.debug("Sandbox execution output", output=stdout_text.rstrip())
+        except Exception as e:
+            # If we have any issues processing the output, log it and continue
+            log.error(
+                "Error processing sandbox output",
+                error=str(e),
+                output_type=type(stdout).__name__,
+            )
+            # Try to output it anyway in case it's important
+            try:
+                print(stdout_text)
+            except:
+                log.error("Could not print stdout", output_repr=repr(stdout))
+
+    def stderr_handler(stderr: Any) -> None:
+        """Handle stderr from sandbox execution"""
+        if stderr:
+            try:
+                stderr_text = str(stderr) if not isinstance(stderr, str) else stderr
+                log.error("Sandbox execution error", error=stderr_text.rstrip())
+            except Exception as e:
+                log.error(
+                    "Error processing stderr",
+                    error=str(e),
+                    stderr_type=type(stderr).__name__,
+                )
+
+    # Use run_code to execute the analysis
     exec_result = code_interpreter.run_code(
         analysis_code,
-        on_stdout=lambda stdout: print(stdout) if verbose else None,
-        on_stderr=lambda stderr: print(f"Error: {stderr}") if stderr else None,
+        on_stdout=stdout_handler,
+        on_stderr=stderr_handler,
     )
 
     if exec_result.error:
-        print(f"Error analyzing pickle files: {exec_result.error}")
+        log.error("Error analyzing pickle files", error=exec_result.error)
         return
 
-    # Process and display results
-    if verbose:
-        print("\nAnalysis results:")
-
-    # Output the result text
-    if hasattr(exec_result, "text"):
-        print(exec_result.text)
-    elif hasattr(exec_result, "results"):
-        for result in exec_result.results:
-            if hasattr(result, "data"):
-                if "text/plain" in result.data:
-                    print(result.data["text/plain"])
-                elif "text/html" in result.data:
-                    print("HTML output available (not displayed in console)")
-            else:
-                print(result)
-    else:
-        print("No results were returned.")
+    log.debug("Analysis completed successfully")
 
 
 def _generate_analysis_code(remote_paths: List[tuple[str, str]]) -> str:
@@ -170,32 +207,34 @@ import os
 import sys
 import numpy as np
 import pandas as pd
+import json
 from collections import defaultdict
 from typing import Any, Dict, List
 
 def analyze_pickle(file_path: str) -> Dict[str, Any]:
     '''Analyze a pickle file and return its properties.'''
     try:
-        print(f"Opening file: {file_path} (size: {os.path.getsize(file_path)} bytes)")
+        # Log debug info to stderr to keep stdout clean
+        sys.stderr.write(f"Opening file: {file_path} (size: {os.path.getsize(file_path)} bytes)\\n")
         
-        # Debug: Read and print file header
+        # Read file header
         with open(file_path, 'rb') as f:
             header_bytes = f.read(30)
-            print(f"File header (first 30 bytes): {' '.join(f'{b:02x}' for b in header_bytes)}")
+            sys.stderr.write(f"File header: {' '.join(f'{b:02x}' for b in header_bytes)}\\n")
             f.seek(0)
             
             # Try different pickle protocols
             for protocol in range(5):
                 try:
-                    print(f"Attempting pickle protocol {protocol}...")
+                    sys.stderr.write(f"Attempting pickle protocol {protocol}...\\n")
                     f.seek(0)
                     data = pickle.load(f)
-                    print(f"Successfully loaded with protocol {protocol}")
+                    sys.stderr.write(f"Successfully loaded with protocol {protocol}\\n")
                     break
                 except Exception as e:
-                    print(f"Protocol {protocol} failed: {str(e)}")
+                    sys.stderr.write(f"Protocol {protocol} failed: {str(e)}\\n")
                     if protocol == 4:  # Last protocol attempt
-                        print("All protocols failed, returning error")
+                        sys.stderr.write("All protocols failed, returning error\\n")
                         return {
                             'file_path': file_path,
                             'error': f"Pickle load error: {str(e)}",
@@ -255,13 +294,13 @@ results = {}
     # Add code to analyze each file - using raw strings for paths
     for original_name, remote_path in remote_paths:
         code += f"""
-print(f"Analyzing {original_name}...")
+sys.stderr.write(f"Analyzing {original_name}...\\n")
 results["{original_name}"] = analyze_pickle({repr(remote_path)})
 """
 
-    # Add code to print results
+    # Add code to print results in a consistent, parsable format
     code += """
-# Print results in a readable format
+# Print results in a structured, parsable format
 for file_name, result in results.items():
     print(f"\\n{'=' * 50}")
     print(f"Analysis of {file_name}:")
@@ -271,38 +310,35 @@ for file_name, result in results.items():
         print(f"Error: {result['error']}")
         continue
     
-    print(f"Type: {result['type']}")
-    print(f"Size: {result['size_bytes']} bytes")
+    print(f"Object Type: {result['type']}")
+    print(f"Size (bytes): {result['size_bytes']}")
     
     if 'keys_count' in result:
-        print(f"Number of keys: {result['keys_count']}")
-        print(f"Key types: {', '.join(result['key_types'])}")
-        print(f"Value types: {', '.join(result['value_types'])}")
-        if result['sample_keys']:
-            print(f"Sample keys: {result['sample_keys']}")
+        print(f"Number of Keys: {result['keys_count']}")
+        print(f"Key Types: {', '.join(result['key_types'])}")
+        print(f"Value Types: {', '.join(result['value_types'])}")
+        print(f"Sample Keys: {result['sample_keys']}")
     
     if 'length' in result:
         print(f"Length: {result['length']}")
-        print(f"Element types: {', '.join(result['element_types'])}")
-        if result['sample_elements']:
-            print(f"Sample elements: {result['sample_elements']}")
+        print(f"Element Types: {', '.join(result['element_types'])}")
+        print(f"Sample Elements: {result['sample_elements']}")
     
     if 'shape' in result:
         print(f"Shape: {result['shape']}")
         
         if 'columns' in result:  # DataFrame
             print(f"Columns: {result['columns']}")
-            print("Data types:")
+            print(f"Data Types:")
             for col, dtype in result['dtypes'].items():
                 print(f"  - {col}: {dtype}")
-            if result['sample_data']:
-                print("Sample data (first 5 rows):")
-                print(result['sample_data'])
+            if 'sample_data' in result:
+                print(f"Sample Data: {result['sample_data']}")
         
         if 'dtype' in result:  # NumPy array
-            print(f"Data type: {result['dtype']}")
-            if result['sample_data']:
-                print(f"Sample data: {result['sample_data']}")
+            print(f"Data Type: {result['dtype']}")
+            if 'sample_data' in result:
+                print(f"Sample Data: {result['sample_data']}")
 """
 
     return code
