@@ -1,9 +1,13 @@
 import os
-import base64
-import tempfile
+import sys
 import json
+import base64
+import pickle
 import traceback
-from typing import List, Dict, Any
+import re
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Union, Tuple
+import io
 
 import dash
 from dash import html, dcc, callback, Input, Output, State
@@ -12,6 +16,14 @@ import dash_bootstrap_components as dbc  # type: ignore
 # import plotly.graph_objects as go  # type: ignore
 import plotly.express as px  # type: ignore
 import structlog
+import pandas as pd
+import numpy as np
+
+# For handling different file types
+from PyPDF2 import PdfReader
+from docx import Document
+import openai
+from openai import OpenAI
 
 from e2b_hackathon.pickle_analyzer import analyze_pickle_files
 
@@ -24,6 +36,13 @@ app = dash.Dash(
 )
 log = structlog.get_logger()
 
+# Initialize OpenAI client (will use API key from environment)
+try:
+    openai_client: Optional[OpenAI] = OpenAI()
+except Exception as e:
+    log.error("Failed to initialize OpenAI client", error=str(e))
+    openai_client = None  # type: ignore
+
 # Define application layout
 layout = dbc.Container(
     [
@@ -31,9 +50,12 @@ layout = dbc.Container(
             [
                 dbc.Col(
                     [
-                        html.H1("Pickle File Analyzer", className="text-center my-4"),
+                        html.H1(
+                            "Enhanced Data Analysis Platform",
+                            className="text-center my-4",
+                        ),
                         html.P(
-                            "Upload pickle files to analyze their content and structure using E2B sandbox",
+                            "Upload data files (Pickle, CSV, Parquet) and context files (Text, PDF, Word) for comprehensive analysis",
                             className="text-center lead mb-4",
                         ),
                     ],
@@ -49,9 +71,11 @@ layout = dbc.Container(
                             [
                                 dbc.CardBody(
                                     [
-                                        html.H5("Upload Files", className="card-title"),
+                                        html.H5(
+                                            "Upload Data Files", className="card-title"
+                                        ),
                                         html.P(
-                                            "Upload one or more pickle files (.pkl or .pickle) to analyze",
+                                            "Upload data files (.pkl, .pickle, .csv, .parquet) for analysis",
                                             className="card-text text-muted",
                                         ),
                                         dcc.Upload(
@@ -62,7 +86,7 @@ layout = dbc.Container(
                                                         className="fas fa-upload me-2"
                                                     ),
                                                     "Drag and Drop or ",
-                                                    html.A("Select Pickle Files"),
+                                                    html.A("Select Data Files"),
                                                 ]
                                             ),
                                             style={
@@ -77,14 +101,64 @@ layout = dbc.Container(
                                             },
                                             multiple=True,
                                         ),
+                                        html.P(
+                                            "Files will be automatically analyzed upon upload",
+                                            className="text-muted small mt-2",
+                                        ),
                                     ]
                                 )
                             ],
                             className="mb-4",
                         ),
                     ],
-                    width=12,
-                )
+                    md=6,
+                ),
+                dbc.Col(
+                    [
+                        dbc.Card(
+                            [
+                                dbc.CardBody(
+                                    [
+                                        html.H5(
+                                            "Upload Context Files",
+                                            className="card-title",
+                                        ),
+                                        html.P(
+                                            "Upload text, PDF, or Word files to provide context",
+                                            className="card-text text-muted",
+                                        ),
+                                        dcc.Upload(
+                                            id="upload-context",
+                                            children=html.Div(
+                                                [
+                                                    html.I(
+                                                        className="fas fa-upload me-2"
+                                                    ),
+                                                    "Drag and Drop or ",
+                                                    html.A("Select Context Files"),
+                                                ]
+                                            ),
+                                            style={
+                                                "width": "100%",
+                                                "height": "60px",
+                                                "lineHeight": "60px",
+                                                "borderWidth": "1px",
+                                                "borderStyle": "dashed",
+                                                "borderRadius": "5px",
+                                                "textAlign": "center",
+                                                "margin": "10px 0",
+                                            },
+                                            multiple=True,
+                                            accept=".txt, .pdf, .docx, .doc",
+                                        ),
+                                    ]
+                                )
+                            ],
+                            className="mb-4",
+                        ),
+                    ],
+                    md=6,
+                ),
             ]
         ),
         # Loading spinner for when analysis is running
@@ -111,12 +185,74 @@ layout = dbc.Container(
             [
                 dbc.Col(
                     [
-                        html.Div(id="output-data-upload", className="mt-4"),
+                        html.Div(id="data-output", className="mt-4"),
                     ],
                     width=12,
                 )
             ]
         ),
+        # Context files section
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.Div(id="context-output", className="mt-4"),
+                    ],
+                    width=12,
+                )
+            ]
+        ),
+        # Correlation analysis section
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.H3("Correlation Analysis", className="mt-4 mb-3"),
+                        html.Button(
+                            "Analyze Correlations",
+                            id="analyze-correlations-button",
+                            className="btn btn-primary mb-3",
+                        ),
+                        html.Div(id="correlation-output"),
+                    ],
+                    width=12,
+                )
+            ]
+        ),
+        # AI Analysis Plan section
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.H3("AI Analysis Plan", className="mt-4 mb-3"),
+                        html.Button(
+                            "Generate Analysis Plan",
+                            id="generate-plan-button",
+                            className="btn btn-primary mb-3",
+                        ),
+                        html.Div(id="ai-plan-output"),
+                    ],
+                    width=12,
+                )
+            ]
+        ),
+        # AI Analysis Results section
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.H3("AI Analysis Results", className="mt-4 mb-3"),
+                        html.Div(id="ai-results-output"),
+                    ],
+                    width=12,
+                )
+            ]
+        ),
+        # Store components for data
+        dcc.Store(id="data-store", storage_type="memory"),
+        dcc.Store(id="context-store", storage_type="memory"),
+        dcc.Store(id="correlation-store", storage_type="memory"),
+        dcc.Store(id="ai-plan-store", storage_type="memory"),
         # Footer
         dbc.Row(
             [
@@ -124,7 +260,7 @@ layout = dbc.Container(
                     [
                         html.Hr(),
                         html.P(
-                            "Powered by E2B Sandbox - A secure environment for analyzing pickle files",
+                            "Powered by E2B Sandbox and OpenAI - A secure environment for comprehensive data analysis",
                             className="text-center text-muted small",
                         ),
                     ],
@@ -141,37 +277,184 @@ layout = dbc.Container(
 app.layout = layout  # type: ignore
 
 
-def save_uploaded_files(contents: List[str], filenames: List[str]) -> List[str]:
+def execute_analysis_code(code, data_paths):
     """
-    Save uploaded files to temporary directory and return paths
+    Execute the generated analysis code in an E2B sandbox
 
     Args:
-        contents: List of file contents
-        filenames: List of filenames
+        code: Python code to execute
+        data_paths: Dictionary of data file paths
 
     Returns:
-        List of paths to saved files
+        Dictionary with execution results
     """
-    temp_dir = tempfile.mkdtemp()
-    saved_files = []
+    # This would be implemented with the E2B API
+    return {
+        "message": "Analysis would be executed securely in an E2B sandbox.",
+        "sandbox_status": "not_implemented",
+    }
 
-    for content, filename in zip(contents, filenames):
-        # Check if the file is a pickle file (basic check by extension)
-        if not (filename.endswith(".pkl") or filename.endswith(".pickle")):
-            continue
 
-        # Decode the file content
-        content_type, content_string = content.split(",")
-        decoded = base64.b64decode(content_string)
+# Add CSS styles
+app.index_string = """
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>Enhanced Data Analysis Platform</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                margin: 0;
+                background-color: #f7f7f7;
+                color: #333;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            .app-header {
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #ddd;
+            }
+            .app-title {
+                margin: 0;
+                color: #2c3e50;
+            }
+            .app-description {
+                color: #7f8c8d;
+                margin-top: 5px;
+            }
+            .content-container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .upload-section {
+                background-color: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .results-section {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .results-container {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+            .result-panel, .correlation-section, .ai-plan-section, .ai-results-section {
+                background-color: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .button-primary {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+            .button-primary:hover {
+                background-color: #2980b9;
+            }
+            .file-analysis {
+                margin-bottom: 20px;
+                padding: 15px;
+                border: 1px solid #eee;
+                border-radius: 4px;
+            }
+            .error-message {
+                color: #e74c3c;
+                margin-top: 10px;
+            }
+            h3 {
+                margin-top: 0;
+                color: #2c3e50;
+            }
+            pre {
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 4px;
+                overflow-x: auto;
+            }
+            .upload-link {
+                color: #3498db;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+            @media (max-width: 768px) {
+                .results-container {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+"""
 
-        # Save to temporary file
-        file_path = os.path.join(temp_dir, filename)
-        with open(file_path, "wb") as f:
-            f.write(decoded)
 
-        saved_files.append(file_path)
+def save_uploaded_files(content, filename, file_type="data"):
+    """
+    Save uploaded files to temporary directory
 
-    return saved_files
+    Args:
+        content: File content
+        filename: File name
+        file_type: Type of file ('data' or 'context')
+
+    Returns:
+        Path to the saved file
+    """
+    valid_extensions = {
+        "data": [".pkl", ".pickle", ".csv", ".parquet"],
+        "context": [".txt", ".pdf", ".docx", ".doc"],
+    }
+
+    # Check extension
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    if ext not in valid_extensions[file_type]:
+        raise ValueError(f"Invalid file extension for {file_type} file: {ext}")
+
+    # Create temporary directory if it doesn't exist
+    temp_dir = os.path.join(os.getcwd(), "temp_files")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Decode and save file
+    content_type, content_string = content.split(",")
+    decoded = base64.b64decode(content_string)
+
+    # Create a clean filename
+    clean_filename = "".join(
+        [c if c.isalnum() or c in "._- " else "_" for c in filename]
+    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join(temp_dir, f"{timestamp}_{clean_filename}")
+
+    # Save the file
+    with open(file_path, "wb") as f:
+        f.write(decoded)
+
+    return file_path
 
 
 def parse_analysis_results(analysis_text: str) -> Dict[str, Dict[str, Any]]:
@@ -515,207 +798,1107 @@ def toggle_collapse(n_clicks, is_open):
 
 
 @callback(
-    [
-        Output("output-data-upload", "children"),
-        Output("loading-output", "children"),
-        Output("files-being-analyzed", "children"),
-        Output("error-message", "children"),
-    ],
+    Output("data-output", "children"),
+    Output("loading-output", "children"),
+    Output("files-being-analyzed", "children"),
+    Output("error-message", "children"),
+    Output("data-store", "data"),
     Input("upload-data", "contents"),
-    State("upload-data", "filename"),
-    prevent_initial_call=True,
+    Input("upload-data", "filename"),
+    State("data-store", "data"),
 )
-def update_output(contents, filenames):
-    if contents is None:
-        return html.Div(), "", "", ""
+def update_data_output(data_contents, data_filenames, stored_data_results):
+    """
+    Callback for data file upload.
+    Files are automatically analyzed upon upload.
+
+    Returns:
+        - Data output component
+        - Loading output
+        - Files being analyzed text
+        - Error message
+        - Stored data results
+    """
+    if data_contents is None or data_filenames is None:
+        # No file uploaded yet
+        return html.Div(), "", "", "", {}
+
+    # Initialize data store if not exists
+    if stored_data_results is None:
+        stored_data_results = {}
+
+    # Check if the callback was triggered by a file upload
+    ctx = dash.callback_context
+    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
+        return html.Div(), "", "", "", stored_data_results
+
+    # Get the trigger
+    changed_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    if changed_id != "upload-data":
+        return html.Div(), "", "", "", stored_data_results
 
     # Show the files being analyzed
-    files_display = (
-        html.Div(
-            [
-                dbc.Alert(
-                    [
-                        html.H5("Analyzing Files:", className="alert-heading"),
-                        html.Ul([html.Li(filename) for filename in filenames]),
-                    ],
-                    color="info",
-                )
-            ]
-        )
-        if filenames
-        else ""
+    files_display = dbc.Alert(
+        [
+            html.H5("Analyzing Data Files:", className="alert-heading"),
+            html.Ul([html.Li(filename) for filename in data_filenames]),
+        ],
+        color="info",
     )
 
-    # Save uploaded files to disk
-    try:
-        saved_files = save_uploaded_files(contents, filenames)
-        log.info("Files saved", count=len(saved_files), filenames=filenames)
-    except Exception as e:
-        log.error("Error saving files", error=str(e), exc_info=True)
-        return (
-            html.Div(),
-            "",
-            "",
-            dbc.Alert(
-                f"Error saving uploaded files: {str(e)}",
-                color="danger",
-            ),
-        )
+    # Process each uploaded file
+    output_components = []
+    new_data_results = {}
 
-    if not saved_files:
-        return (
-            html.Div(),
-            "",
-            "",
-            dbc.Alert(
-                "No valid pickle files were uploaded. Please upload files with .pkl or .pickle extension.",
-                color="warning",
-            ),
-        )
+    for content, filename in zip(data_contents, data_filenames):
+        if content is None:
+            continue
 
-    try:
-        # Create a string buffer to capture the printed output
-        import io
-        import sys
-
-        # Redirect stdout to capture output
-        old_stdout = sys.stdout
-        new_stdout = io.StringIO()
-        sys.stdout = new_stdout
-
-        # Log file info before analysis
-        for file_path in saved_files:
-            file_size = os.path.getsize(file_path)
-            log.info("Analyzing file", path=file_path, size=file_size)
-
-        # Run the analysis
-        analyze_pickle_files(saved_files, verbose=True)
-
-        # Restore stdout
-        sys.stdout = old_stdout
-        analysis_output = new_stdout.getvalue()
-
-        log.info("Analysis completed", output_length=len(analysis_output))
-
-        # Parse results
-        results = parse_analysis_results(analysis_output)
-
-        # Create output elements
-        output_elements = []
-
-        # Add summary cards for each file
-        output_elements.append(html.H3("Analysis Results", className="mt-4 mb-3"))
-
-        if not results:
-            output_elements.append(
-                dbc.Alert(
-                    "No results were obtained from the analysis. The files might be corrupted or not contain valid pickle data.",
-                    color="warning",
-                )
-            )
-        else:
-            file_cards_row = []
-
-            for file_name, file_info in results.items():
-                # Create a card for each file
-                if file_name.startswith("[2m"):
-                    log.info("Skipping overall results", file_info=file_info)
-                    continue
-                card = create_file_summary_card(file_name, file_info)
-                file_cards_row.append(dbc.Col(card, md=6, lg=4))
-
-            # Add cards in a row with responsive columns
-            output_elements.append(dbc.Row(file_cards_row))
-
-            # Add collapsible raw output section
-            output_elements.append(
-                html.Div(
-                    [
-                        html.H4("Raw Analysis Output", className="mt-4"),
-                        dbc.Button(
-                            "Toggle Raw Output",
-                            id="toggle-raw-output",
-                            className="mb-3",
-                            color="secondary",
-                        ),
-                        dbc.Collapse(
-                            dbc.Card(
-                                dbc.CardBody(
-                                    html.Pre(
-                                        analysis_output,
-                                        style={
-                                            "backgroundColor": "#f8f9fa",
-                                            "padding": "15px",
-                                            "borderRadius": "5px",
-                                            "maxHeight": "500px",
-                                            "overflowY": "auto",
-                                        },
-                                    )
-                                )
-                            ),
-                            id="collapse-raw-output",
-                            is_open=False,
-                        ),
-                    ]
-                )
-            )
-
-        # Clean up temporary files
-        for file_path in saved_files:
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                log.error("Error removing file", path=file_path, error=str(e))
-
-        # Try to remove the temp directory
+        # Save file to temporary directory
         try:
-            os.rmdir(os.path.dirname(saved_files[0]))
-        except Exception as e:
-            log.error("Error removing temp directory", error=str(e))
+            file_path = save_uploaded_files(content, filename, "data")
 
-        return html.Div(output_elements), "", files_display, ""
+            # Analyze file
+            # All pickle files are analyzed securely by default
+            file_ext = os.path.splitext(filename)[1].lower()
+            result = analyze_data_file(file_path)
 
-    except Exception as e:
-        error_msg = str(e)
-        tb = traceback.format_exc()
-        log.error("Pickle file upload error", error=error_msg, traceback=tb)
-
-        # Return error message with detailed information
-        return (
-            html.Div(),
-            "",
-            "",
-            dbc.Alert(
-                [
-                    html.H4("Error", className="alert-heading"),
-                    html.P(f"An error occurred during analysis: {error_msg}"),
-                    html.Hr(),
-                    html.Details(
+            if "error" in result:
+                output_components.append(
+                    dbc.Alert(
                         [
-                            html.Summary("Technical Details (click to expand)"),
-                            html.Pre(tb, style={"whiteSpace": "pre-wrap"}),
-                        ]
-                    ),
-                    html.Hr(),
-                    html.P(
-                        "Please check that your pickle files are valid and try again.",
-                        className="mb-0",
-                    ),
-                ],
-                color="danger",
-            ),
-        )
+                            html.H5(f"Error analyzing {filename}"),
+                            html.P(result["error"]),
+                        ],
+                        color="danger",
+                        className="mb-3",
+                    )
+                )
+                log.error(
+                    "Error analyzing data file",
+                    error=result["error"],
+                    filename=filename,
+                )
+            else:
+                # Store analysis results
+                new_data_results[filename] = result
+
+                # Format analysis results for display
+                file_card = create_file_summary_card(filename, result)
+                output_components.append(file_card)
+
+        except Exception as e:
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H5(f"Error processing {filename}"),
+                        html.P(str(e)),
+                    ],
+                    color="danger",
+                    className="mb-3",
+                )
+            )
+            log.error(
+                "Exception while processing data file", error=str(e), filename=filename
+            )
+
+    if not output_components:
+        return html.Div("No valid data files uploaded."), "", "", "", {}
+
+    # Wrap all cards in a row with responsive columns
+    wrapped_output = dbc.Row(
+        [dbc.Col(component, md=6, lg=4) for component in output_components]
+    )
+
+    return wrapped_output, "", "", "", new_data_results
 
 
 @callback(
-    Output("collapse-raw-output", "is_open"),
-    [Input("toggle-raw-output", "n_clicks")],
-    [State("collapse-raw-output", "is_open")],
+    Output("context-output", "children"),
+    Output("context-store", "data"),
+    Input("upload-context", "contents"),
+    Input("upload-context", "filename"),
+    State("context-store", "data"),
 )
-def toggle_raw_output(n_clicks, is_open):
-    if n_clicks:
-        return not is_open
-    return is_open
+def update_context_output(context_contents, context_filenames, stored_context_results):
+    """
+    Callback for context file upload.
+    Returns:
+        - Context output component
+        - Stored context results
+    """
+    if context_contents is None or context_filenames is None:
+        # No file uploaded yet
+        return html.Div("Upload context files to see extracted text."), {}
+
+    # Initialize data store if not exists
+    if stored_context_results is None:
+        stored_context_results = {}
+
+    # Check if the callback was triggered by a file upload
+    ctx = dash.callback_context
+    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
+        return html.Div(
+            "Upload context files to see extracted text."
+        ), stored_context_results
+
+    # Get the uploaded file(s)
+    changed_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    if changed_id != "upload-context":
+        return html.Div(
+            "Upload context files to see extracted text."
+        ), stored_context_results
+
+    # Process the uploaded files
+    output_components = []
+    new_context_results = stored_context_results.copy()
+
+    for content, filename in zip(context_contents, context_filenames):
+        if content is None:
+            continue
+
+        # Save file to temporary directory
+        try:
+            file_path = save_uploaded_files(content, filename, "context")
+
+            # Extract text from file
+            result = extract_text_from_file(file_path)
+
+            if "error" in result:
+                output_components.append(
+                    dbc.Alert(
+                        [
+                            html.H5(f"Error processing {filename}"),
+                            html.P(result["error"]),
+                        ],
+                        color="danger",
+                        className="mb-3",
+                    )
+                )
+                log.error(
+                    "Error extracting text from file",
+                    error=result["error"],
+                    filename=filename,
+                )
+            else:
+                # Store text content
+                new_context_results[filename] = result.get("Text", "")
+
+                # Display extracted text
+                output_components.append(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(html.H5(filename, className="mb-0")),
+                            dbc.CardBody(
+                                [
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    html.Strong("File Type: "),
+                                                    html.Span(
+                                                        result.get("Type", "Unknown")
+                                                    ),
+                                                ],
+                                                md=6,
+                                            ),
+                                            dbc.Col(
+                                                [
+                                                    html.Strong("File Size: "),
+                                                    html.Span(
+                                                        result.get("Size", "Unknown")
+                                                    ),
+                                                ],
+                                                md=6,
+                                            ),
+                                        ]
+                                    ),
+                                    html.Hr(),
+                                    html.H6("Extracted Text:"),
+                                    dbc.Card(
+                                        dbc.CardBody(
+                                            html.Pre(
+                                                result.get("Text", "No text extracted"),
+                                                style={
+                                                    "whiteSpace": "pre-wrap",
+                                                    "maxHeight": "300px",
+                                                    "overflowY": "auto",
+                                                },
+                                            )
+                                        ),
+                                        className="bg-light mt-2",
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="mb-3",
+                    )
+                )
+        except Exception as e:
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H5(f"Error processing {filename}"),
+                        html.P(str(e)),
+                    ],
+                    color="danger",
+                    className="mb-3",
+                )
+            )
+            log.error(
+                "Exception while processing context file",
+                error=str(e),
+                filename=filename,
+            )
+
+    if not output_components:
+        return html.Div("No valid context files uploaded."), new_context_results
+
+    # Wrap all cards in a container
+    wrapped_output = html.Div(
+        [
+            html.H3("Context Files", className="mb-3"),
+            dbc.Row([dbc.Col(component, md=6) for component in output_components]),
+        ]
+    )
+
+    return wrapped_output, new_context_results
+
+
+@callback(
+    Output("correlation-output", "children"),
+    Output("correlation-store", "data"),
+    Input("analyze-correlations-button", "n_clicks"),
+    State("data-store", "data"),
+)
+def update_correlation_analysis(n_clicks, data_results):
+    """
+    Callback for updating the correlation analysis.
+    Returns:
+        - Correlation output component
+        - Correlation results data
+    """
+    # Check if callback was triggered
+    if n_clicks is None or n_clicks == 0 or not data_results:
+        return html.Div(
+            "Click 'Analyze Correlations' to find connections between your data files."
+        ), {}
+
+    # Check if we have data results
+    if not data_results or len(data_results) < 2:
+        return dbc.Alert(
+            "Upload at least two data files to analyze correlations.", color="warning"
+        ), {}
+
+    try:
+        # Find correlations
+        correlation_results = correlate_data_files(data_results)
+
+        if "error" in correlation_results:
+            return dbc.Alert(correlation_results["error"], color="warning"), {}
+
+        # Create output components for correlations
+        output_components = []
+
+        # Shared columns
+        shared_cols = correlation_results.get("shared_columns", {})
+        if shared_cols:
+            shared_cols_items = []
+            for col, files in shared_cols.items():
+                shared_cols_items.append(
+                    dbc.ListGroupItem(
+                        [html.Strong(col), ": Found in ", html.Span(", ".join(files))]
+                    )
+                )
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H5("Shared Columns", className="mb-0")),
+                        dbc.CardBody(
+                            [dbc.ListGroup(shared_cols_items, className="mb-3")]
+                        ),
+                    ],
+                    className="mb-4",
+                )
+            )
+        else:
+            output_components.append(
+                dbc.Alert("No shared columns found between files.", color="info")
+            )
+
+        # Potential join keys
+        joins = correlation_results.get("potential_joins", [])
+        if joins:
+            joins_items = []
+            for join in joins:
+                joins_items.append(
+                    dbc.ListGroupItem(
+                        [
+                            html.Strong(join["column"]),
+                            ": Could join ",
+                            html.Span(", ".join(join["files"])),
+                        ]
+                    )
+                )
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H5("Potential Join Keys", className="mb-0")
+                        ),
+                        dbc.CardBody([dbc.ListGroup(joins_items, className="mb-3")]),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        # Similar sized files
+        similar_sizes = correlation_results.get("similar_sizes", [])
+        if similar_sizes:
+            size_items = []
+            for size_info in similar_sizes:
+                size_items.append(
+                    dbc.ListGroupItem(
+                        [
+                            html.Span(", ".join(size_info["files"])),
+                            ": Row counts of ",
+                            html.Span(
+                                ", ".join(
+                                    [str(count) for count in size_info["row_counts"]]
+                                )
+                            ),
+                        ]
+                    )
+                )
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H5("Files with Similar Sizes", className="mb-0")
+                        ),
+                        dbc.CardBody([dbc.ListGroup(size_items, className="mb-3")]),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        # Common data types
+        common_types = correlation_results.get("common_data_types", {})
+        if common_types:
+            types_components = []
+
+            for files_key, types in common_types.items():
+                type_items = []
+                for col, dtype in types.items():
+                    type_items.append(
+                        dbc.ListGroupItem([html.Strong(col), ": ", html.Span(dtype)])
+                    )
+
+                types_components.append(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(html.H6(files_key, className="mb-0")),
+                            dbc.CardBody([dbc.ListGroup(type_items)]),
+                        ],
+                        className="mb-3",
+                    )
+                )
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H5("Common Data Types", className="mb-0")),
+                        dbc.CardBody([html.Div(types_components)]),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        return html.Div(output_components), correlation_results
+
+    except Exception as e:
+        log.error("Error in correlation analysis", error=str(e))
+        return dbc.Alert(
+            [
+                html.H5("Error in Correlation Analysis"),
+                html.P(str(e)),
+                html.Pre(traceback.format_exc()),
+            ],
+            color="danger",
+        ), {}
+
+
+@callback(
+    Output("ai-plan-output", "children"),
+    Output("ai-plan-store", "data"),
+    Input("generate-plan-button", "n_clicks"),
+    State("data-store", "data"),
+    State("context-store", "data"),
+    State("correlation-store", "data"),
+)
+def update_analysis_plan(n_clicks, data_results, context_results, correlation_results):
+    """
+    Callback for generating AI analysis plan.
+    Returns:
+        - AI plan output component
+        - AI plan data
+    """
+    if n_clicks is None or n_clicks == 0 or not data_results:
+        return html.Div(
+            "Click 'Generate Analysis Plan' to create an AI-powered plan."
+        ), {}
+
+    # Check if we have data results
+    if not data_results:
+        return dbc.Alert(
+            "Upload data files first before generating an analysis plan.",
+            color="warning",
+        ), {}
+
+    try:
+        # Generate analysis plan
+        plan_results = generate_analysis_plan(
+            data_results, context_results or {}, correlation_results or {}
+        )
+
+        if "error" in plan_results:
+            return dbc.Alert(
+                [
+                    html.H5("Error Generating Analysis Plan"),
+                    html.P(plan_results["error"]),
+                    html.Pre(plan_results.get("traceback", "")),
+                ],
+                color="danger",
+            ), {}
+
+        # Create output components for the plan
+        output_components = []
+
+        # Add timestamp
+        if "timestamp" in plan_results:
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.Strong("Generated at: "),
+                        html.Span(plan_results["timestamp"]),
+                    ],
+                    color="info",
+                    className="mb-3",
+                )
+            )
+
+        # Analysis plan
+        if "analysis_plan" in plan_results:
+            # Handle different formats of analysis_plan (string or list)
+            if isinstance(plan_results["analysis_plan"], str):
+                plan_text = plan_results["analysis_plan"]
+                # Try to split on numbered items
+                plan_items = re.split(r"\n\d+\.|\n\-", plan_text)
+                if len(plan_items) > 1:
+                    plan_items = [item.strip() for item in plan_items if item.strip()]
+                    plan_content = html.Ol([html.Li(item) for item in plan_items])
+                else:
+                    plan_content = html.Pre(plan_text)
+            elif isinstance(plan_results["analysis_plan"], list):
+                plan_content = html.Ol(
+                    [html.Li(item) for item in plan_results["analysis_plan"]]
+                )
+            else:
+                plan_content = html.Pre(str(plan_results["analysis_plan"]))
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(html.H5("Analysis Plan", className="mb-0")),
+                        dbc.CardBody([plan_content]),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        # Analysis code
+        if "analysis_code" in plan_results:
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            html.H5("Generated Python Code", className="mb-0")
+                        ),
+                        dbc.CardBody(
+                            [
+                                html.Button(
+                                    "Execute in E2B Sandbox",
+                                    id="execute-code-button",
+                                    className="btn btn-success mb-3",
+                                ),
+                                html.Pre(
+                                    plan_results["analysis_code"],
+                                    style={
+                                        "backgroundColor": "#f8f9fa",
+                                        "padding": "15px",
+                                        "borderRadius": "5px",
+                                        "maxHeight": "500px",
+                                        "overflowY": "auto",
+                                    },
+                                ),
+                            ]
+                        ),
+                    ],
+                    className="mb-4",
+                )
+            )
+
+        return html.Div(output_components), plan_results
+
+    except Exception as e:
+        log.error("Error generating analysis plan", error=str(e))
+        return dbc.Alert(
+            [
+                html.H5("Error Generating Analysis Plan"),
+                html.P(str(e)),
+                html.Pre(traceback.format_exc()),
+            ],
+            color="danger",
+        ), {}
+
+
+@callback(
+    Output("ai-results-output", "children"),
+    Input("execute-code-button", "n_clicks"),
+    State("ai-plan-store", "data"),
+)
+def update_execution_results(n_clicks, plan_data):
+    """
+    Callback for executing the generated code in E2B sandbox.
+    Returns:
+        - AI results output component
+    """
+    if (
+        n_clicks is None
+        or n_clicks == 0
+        or not plan_data
+        or "analysis_code" not in plan_data
+    ):
+        return html.Div("Execute the generated code to see results here.")
+
+    try:
+        # This would be the actual E2B sandbox execution
+        # For now, just return a placeholder
+        return dbc.Card(
+            [
+                dbc.CardHeader(html.H5("Sandbox Execution Results", className="mb-0")),
+                dbc.CardBody(
+                    [
+                        dbc.Alert(
+                            "This feature will execute the generated code in an E2B sandbox.",
+                            color="info",
+                        ),
+                        html.P(
+                            "Implementation in progress - this would run your code securely."
+                        ),
+                        html.Hr(),
+                        html.Strong("Code executed:"),
+                        html.Pre(
+                            plan_data["analysis_code"],
+                            style={
+                                "backgroundColor": "#f8f9fa",
+                                "padding": "10px",
+                                "borderRadius": "5px",
+                                "maxHeight": "300px",
+                                "overflowY": "auto",
+                            },
+                        ),
+                    ]
+                ),
+            ],
+            className="mb-4",
+        )
+
+    except Exception as e:
+        log.error("Error executing code in sandbox", error=str(e))
+        return dbc.Alert(
+            [
+                html.H5("Error Executing Code"),
+                html.P(str(e)),
+                html.Pre(traceback.format_exc()),
+            ],
+            color="danger",
+        )
+
+
+def analyze_data_file(file_path: str) -> Dict[str, Any]:
+    """
+    Analyze different types of data files.
+
+    Args:
+        file_path: Path to the data file
+
+    Returns:
+        Dictionary with analysis results
+    """
+    # Get file information
+    try:
+        file_stats = os.stat(file_path)
+        file_size = file_stats.st_size
+        file_name = os.path.basename(file_path)
+
+        file_info: Dict[str, Any] = {
+            "Path": file_path,
+            "Name": file_name,
+            "Size": f"{file_size / 1024:.2f} KB"
+            if file_size < 1024 * 1024
+            else f"{file_size / (1024 * 1024):.2f} MB",
+        }
+
+        # Determine file type by extension
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+
+        # Process based on file type
+        if ext in [".pkl", ".pickle"]:
+            try:
+                # For pickle files, analyze securely in E2B sandbox
+                log.info(
+                    "Analyzing pickle file securely in E2B sandbox", file_path=file_path
+                )
+
+                # Create a string buffer to capture the output of analyze_pickle_files
+                output_buffer = io.StringIO()
+                original_stdout = sys.stdout
+                sys.stdout = output_buffer
+
+                # Call the function from pickle_analyzer to analyze the pickle in a sandbox
+                analyze_pickle_files([file_path], verbose=False)
+
+                # Restore stdout and get the captured output
+                sys.stdout = original_stdout
+                analysis_output = output_buffer.getvalue()
+
+                # Parse the analysis results
+                parsed_results = parse_analysis_results(analysis_output)
+
+                if parsed_results and file_name in parsed_results:
+                    # Add the secure analysis results to our file_info
+                    file_info.update(parsed_results[file_name])
+                    file_info["Type"] = "Pickle File (Securely Analyzed)"
+                    file_info["Analysis Method"] = "E2B Sandbox"
+                else:
+                    file_info["Type"] = "Pickle File"
+                    file_info["Warning"] = "No detailed analysis available from sandbox"
+                    file_info["Raw Output"] = analysis_output
+
+                return file_info
+            except Exception as e:
+                log.error(
+                    "Failed to analyze pickle file in sandbox",
+                    error=str(e),
+                    file_path=file_path,
+                )
+                return {
+                    "error": f"Failed to analyze pickle file securely: {str(e)}",
+                    "Type": "Pickle File",
+                    "Analysis Method": "Failed E2B Sandbox Analysis",
+                    "Path": file_path,
+                    "Name": file_name,
+                    "Size": file_info["Size"],
+                }
+
+        elif ext == ".csv":
+            try:
+                df = pd.read_csv(file_path)
+                file_info.update(analyze_dataframe(df))
+                file_info["Type"] = "DataFrame (CSV)"
+                return file_info
+            except Exception as e:
+                log.error(
+                    "Failed to analyze CSV file", error=str(e), file_path=file_path
+                )
+                return {"error": f"Failed to analyze CSV file: {str(e)}"}
+
+        elif ext == ".parquet":
+            try:
+                df = pd.read_parquet(file_path)
+                file_info.update(analyze_dataframe(df))
+                file_info["Type"] = "DataFrame (Parquet)"
+                return file_info
+            except Exception as e:
+                log.error(
+                    "Failed to analyze Parquet file", error=str(e), file_path=file_path
+                )
+                return {"error": f"Failed to analyze Parquet file: {str(e)}"}
+
+        else:
+            return {"error": f"Unsupported file type: {ext}"}
+
+    except Exception as e:
+        log.error("Failed to analyze data file", error=str(e), file_path=file_path)
+        return {"error": f"Failed to analyze data file: {str(e)}"}
+
+
+def analyze_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Analyze a pandas DataFrame and return its properties.
+
+    Args:
+        df: Pandas DataFrame to analyze
+
+    Returns:
+        Dictionary with DataFrame properties
+    """
+    result: Dict[str, Any] = {}
+
+    # Basic DataFrame info
+    result["Shape"] = str(df.shape)
+    result["Columns"] = list(df.columns)
+    result["dtypes"] = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+    # Missing values
+    missing_values = df.isnull().sum()
+    result["Missing Values"] = {
+        col: int(missing) for col, missing in missing_values.items() if missing > 0
+    }
+
+    # Sample data
+    result["Sample Data"] = df.head(5).to_dict(orient="records")
+
+    # Column statistics
+    column_stats: Dict[str, Dict[str, Any]] = {}
+
+    for col in df.columns:
+        stats: Dict[str, Any] = {}
+        dtype = str(df[col].dtype)
+
+        if pd.api.types.is_numeric_dtype(df[col]):
+            # For numeric columns
+            stats["mean"] = (
+                float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+            )
+            stats["std"] = float(df[col].std()) if not pd.isna(df[col].std()) else None
+            stats["min"] = float(df[col].min()) if not pd.isna(df[col].min()) else None
+            stats["max"] = float(df[col].max()) if not pd.isna(df[col].max()) else None
+            stats["median"] = (
+                float(df[col].median()) if not pd.isna(df[col].median()) else None
+            )
+
+            # Only add if not all values are NaN
+            if any(v is not None for v in stats.values()):
+                column_stats[str(col)] = stats
+
+        elif pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(
+            df[col]
+        ):
+            # For string/object columns
+            value_counts = df[col].value_counts(dropna=False).head(5).to_dict()
+            stats["unique_count"] = df[col].nunique()
+            stats["top_values"] = {str(k): int(v) for k, v in value_counts.items()}
+
+            column_stats[str(col)] = stats
+
+    result["Column Stats"] = column_stats
+
+    return result
+
+
+def extract_text_from_file(file_path: str) -> Dict[str, Any]:
+    """
+    Extract text content from various file types.
+
+    Args:
+        file_path: Path to the context file
+
+    Returns:
+        Dictionary with extracted text and possibly error messages
+    """
+    file_name = os.path.basename(file_path)
+    file_stats = os.stat(file_path)
+    file_size = file_stats.st_size
+
+    result: Dict[str, Any] = {
+        "Path": file_path,
+        "Name": file_name,
+        "Size": f"{file_size / 1024:.2f} KB"
+        if file_size < 1024 * 1024
+        else f"{file_size / (1024 * 1024):.2f} MB",
+    }
+
+    # Determine file type by extension
+    _, ext = os.path.splitext(file_path)
+    ext = ext.lower()
+
+    text_content = ""
+
+    try:
+        if ext == ".txt":
+            with open(file_path, "r", encoding="utf-8") as f:
+                text_content = f.read()
+            result["Type"] = "Text File"
+
+        elif ext == ".pdf":
+            try:
+                import PyPDF2
+
+                with open(file_path, "rb") as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    for page in pdf_reader.pages:
+                        text_content += page.extract_text() + "\n\n"
+                result["Type"] = "PDF File"
+            except ImportError:
+                result["error"] = "PyPDF2 library not installed. Unable to process PDF."
+                log.error("PyPDF2 library not installed")
+
+        elif ext in [".docx", ".doc"]:
+            try:
+                import docx
+
+                doc = docx.Document(file_path)
+                for para in doc.paragraphs:
+                    text_content += para.text + "\n"
+                result["Type"] = "Word Document"
+            except ImportError:
+                result["error"] = (
+                    "python-docx library not installed. Unable to process Word document."
+                )
+                log.error("python-docx library not installed")
+        else:
+            result["error"] = f"Unsupported file type: {ext}"
+            return result
+
+        # Truncate text content if too large
+        if len(text_content) > 1000000:  # ~1MB of text
+            text_content = text_content[:1000000] + "... [truncated]"
+            result["warning"] = "Text content was truncated due to large size"
+
+        result["Text"] = text_content
+        return result
+
+    except Exception as e:
+        log.error("Failed to extract text from file", error=str(e), file_path=file_path)
+        result["error"] = f"Failed to extract text: {str(e)}"
+        return result
+
+
+def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Find correlations between data files
+
+    Args:
+        data_results: Dictionary of data file analysis results
+
+    Returns:
+        Dictionary with correlation results
+    """
+    if not data_results or len(data_results) < 2:
+        return {"error": "Need at least two data files to find correlations"}
+
+    correlations: Dict[str, Any] = {
+        "shared_columns": {},
+        "common_data_types": {},
+        "similar_sizes": [],
+        "potential_joins": [],
+    }
+
+    # Find common columns across DataFrames
+    dataframes = {
+        fname: info
+        for fname, info in data_results.items()
+        if info.get("Type") == "DataFrame"
+    }
+
+    # Exit early if we don't have at least 2 DataFrames
+    if len(dataframes) < 2:
+        return {
+            "message": "Not enough DataFrame files found for correlation analysis",
+            "dataframes_found": len(dataframes),
+        }
+
+    # Track all columns seen
+    all_columns: Dict[str, List[str]] = {}
+
+    # Find shared columns
+    for fname, info in dataframes.items():
+        columns = info.get("Columns", [])
+        for col in columns:
+            col_str = str(col)
+            if col_str not in all_columns:
+                all_columns[col_str] = []
+            all_columns[col_str].append(fname)
+
+    # Filter for columns that appear in multiple files
+    correlations["shared_columns"] = {
+        col: files for col, files in all_columns.items() if len(files) > 1
+    }
+
+    # Find potential join keys
+    potential_joins: List[Dict[str, Any]] = []
+    for col, files in correlations["shared_columns"].items():
+        if len(files) >= 2:
+            potential_joins.append({"column": col, "files": files})
+    correlations["potential_joins"] = potential_joins
+
+    # Find similar data types
+    for fname1, info1 in dataframes.items():
+        for fname2, info2 in dataframes.items():
+            if fname1 >= fname2:  # Skip self-comparisons and duplicates
+                continue
+
+            common_cols = set(info1.get("Columns", [])).intersection(
+                set(info2.get("Columns", []))
+            )
+            if common_cols:
+                dtypes1 = info1.get("dtypes", {})
+                dtypes2 = info2.get("dtypes", {})
+
+                matching_dtypes = {}
+                for col in common_cols:
+                    col_str = str(col)
+                    if col_str in dtypes1 and col_str in dtypes2:
+                        if dtypes1[col_str] == dtypes2[col_str]:
+                            matching_dtypes[col_str] = dtypes1[col_str]
+
+                if matching_dtypes:
+                    key = f"{fname1} ⟷ {fname2}"
+                    if "common_data_types" not in correlations:
+                        correlations["common_data_types"] = {}
+                    correlations["common_data_types"][key] = matching_dtypes
+
+    # Find files with similar sizes
+    sizes = []
+    for fname, info in dataframes.items():
+        shape_str = info.get("Shape", "(0, 0)")
+        # Handle shape stored as string like "(100, 5)"
+        if (
+            isinstance(shape_str, str)
+            and shape_str.startswith("(")
+            and shape_str.endswith(")")
+        ):
+            try:
+                # Parse the row count from the shape string
+                row_count = int(shape_str.strip("()").split(",")[0].strip())
+                sizes.append((fname, row_count))
+            except (ValueError, IndexError):
+                continue
+        elif isinstance(shape_str, tuple) and len(shape_str) == 2:
+            # Handle shape stored as actual tuple
+            sizes.append((fname, shape_str[0]))
+
+    sizes.sort(key=lambda x: x[1])
+
+    similar_sizes: List[Dict[str, Any]] = []
+    for i in range(len(sizes) - 1):
+        curr_file, curr_size = sizes[i]
+        next_file, next_size = sizes[i + 1]
+
+        # If within 10% of each other
+        if curr_size > 0 and abs(curr_size - next_size) / curr_size < 0.1:
+            similar_sizes.append(
+                {"files": [curr_file, next_file], "row_counts": [curr_size, next_size]}
+            )
+    correlations["similar_sizes"] = similar_sizes
+
+    return correlations
+
+
+def generate_analysis_plan(
+    data_results: Dict[str, Dict[str, Any]],
+    context_texts: Dict[str, str],
+    correlations: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Generate an analysis plan using OpenAI API
+
+    Args:
+        data_results: Dictionary of data file analysis results
+        context_texts: Dictionary of context file texts
+        correlations: Dictionary of correlation results
+
+    Returns:
+        Dictionary with analysis plan and generated code
+    """
+    if not openai_client:
+        return {"error": "OpenAI client not initialized. Please check your API key."}
+
+    # Prepare the prompt
+    data_summary = json.dumps(
+        {
+            k: {
+                "type": v.get("Type", "Unknown"),
+                "shape": v.get("Shape", "Unknown"),
+                "columns": v.get("Columns", [])[:10],  # Limit columns for prompt size
+            }
+            for k, v in data_results.items()
+        },
+        indent=2,
+    )
+
+    # Prepare context text (truncate if too long)
+    context_summary = ""
+    for filename, text in context_texts.items():
+        # Truncate text if too long
+        if len(text) > 500:
+            text = text[:500] + "... [truncated]"
+        context_summary += f"=== {filename} ===\n{text}\n\n"
+
+    correlation_summary = json.dumps(correlations, indent=2)
+
+    prompt = f"""
+As a data science assistant, analyze the following datasets and context information to create an analysis plan.
+
+DATA FILES:
+{data_summary}
+
+CORRELATIONS BETWEEN DATA FILES:
+{correlation_summary}
+
+CONTEXT FROM TEXT FILES:
+{context_summary}
+
+Based on this information, please:
+1. Create a concise analysis plan
+2. Generate Python code that could be executed in an E2B sandbox to analyze these datasets
+3. The code should focus on finding patterns, correlations, and insights between the datasets
+4. Utilize any context information to guide the analysis
+5. Include visualizations where appropriate
+
+Respond with a JSON object containing:
+- "analysis_plan": A step-by-step plan for data analysis
+- "analysis_code": Complete Python code that could be executed
+
+The code should be self-contained and handle reading the files from their paths.
+"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a data science assistant that generates analysis plans and Python code.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        # Extract the response
+        response_text = response.choices[0].message.content
+        if response_text:
+            result = json.loads(response_text)
+
+            # Add timestamp
+            result["timestamp"] = pd.Timestamp.now().isoformat()
+
+            return result
+        else:
+            return {"error": "No response received from OpenAI API"}
+
+    except Exception as e:
+        return {
+            "error": f"Failed to generate analysis plan: {str(e)}",
+            "traceback": traceback.format_exc(),
+        }
 
 
 def main():
