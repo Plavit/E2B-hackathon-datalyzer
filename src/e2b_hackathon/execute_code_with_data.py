@@ -51,7 +51,7 @@ def execute_code_with_data(
         # Type ignore for missing stubs in e2b_code_interpreter
         from e2b_code_interpreter import Sandbox  # type: ignore
     except ImportError:
-        error_msg = "Missing dependency: e2b_code_interpreter. Install with: pip install e2b-code-interpreter"
+        error_msg = "Missing dependency: e2b_code_interpreter. Install with: uv add e2b-code-interpreter"
         logger.error(error_msg)
         return {
             "status": "error",
@@ -83,25 +83,9 @@ def execute_code_with_data(
 
             for file_name, file_path in data_paths.items():
                 try:
-                    # Read the file content
+                    # Upload the file to the sandbox using the files API
                     with open(file_path, "rb") as f:
-                        file_content = f.read()
-
-                    # Create a remote path
-                    remote_path = f"/tmp/{file_name}"
-
-                    # Write file to the sandbox
-                    file_upload_code = f"""
-import os
-
-# Ensure tmp directory exists
-os.makedirs('/tmp', exist_ok=True)
-
-# Write data to file
-with open('{remote_path}', 'wb') as f:
-    f.write({repr(file_content)})
-"""
-                    sandbox.run_code(file_upload_code)
+                        remote_path = sandbox.files.write(file_name, f)
 
                     # Store the remote path
                     remote_paths[file_name] = remote_path
