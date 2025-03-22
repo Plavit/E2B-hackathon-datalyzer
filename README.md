@@ -1,13 +1,28 @@
-# E2B Data Project Mess Analyzer
+# E2B Deep Data Project Mess Analyzer
 
 A secure tool for analyzing pickle files using E2B sandbox. This project allows you to analyze pickle files safely in an isolated environment, without risking exposure to potentially malicious code.
 
 ## Problem Statement
-TBD
+Were you ever thrown into a problem head-first, needing to ? Be it for science, for business or just for a fun side-project, that can be a start of a gruelling, weeks long process of data curation, analysis and understanding that can suck the joy out of even the most exciting of projects:
+
+TBD image
+
+Well WORRY NOT, for we have developed a ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST Deep Data Analyzer! How does it work?
+1
+
+TBD image
 
 ## How we built it
-It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee.
-TBD
+It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, specifically:
+- agentic backend is via E2B sandboxing (obviously) and LLM API calls
+- internal logic is vibe-coded in python
+- frontend is using Plotly dash
+
+Start of hackathon when we refined the idea: ca. 11AM:
+TBD image
+
+End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was deadline):
+TBD image
 
 ## Features
 
