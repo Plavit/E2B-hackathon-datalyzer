@@ -33,6 +33,86 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="Datalyzer",
 )
+
+# Add custom CSS styles
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            .analysis-output {
+                background-color: white;
+                border-radius: 10px;
+                padding: 15px;
+                margin-bottom: 15px;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                font-size: 0.9rem;
+            }
+            
+            .analysis-output pre {
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+                font-size: 0.85rem;
+                overflow-x: auto;
+            }
+            
+            .btn-primary {
+                background-color: #10a37f;
+                border-color: #10a37f;
+            }
+            
+            .btn-primary:hover {
+                background-color: #0d8c6d;
+                border-color: #0d8c6d;
+            }
+            
+            /* ChatGPT-like scrollbar */
+            ::-webkit-scrollbar {
+                width: 8px;
+            }
+            
+            ::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 4px;
+            }
+            
+            ::-webkit-scrollbar-thumb {
+                background: #c5c5c5;
+                border-radius: 4px;
+            }
+            
+            ::-webkit-scrollbar-thumb:hover {
+                background: #a8a8a8;
+            }
+            
+            /* Card and alert styling */
+            .card {
+                border: none;
+                margin-bottom: 1rem;
+            }
+            
+            .alert {
+                border: none;
+                border-radius: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
 log = structlog.get_logger()
 SEED = 42
 
@@ -70,203 +150,231 @@ except Exception as e:
 layout = html.Div(
     [
         navbar,  # Add the navbar at the top
+        # Add margin-top to account for fixed navbar
+        html.Div(style={"margin-top": "80px"}),  # Spacer for fixed navbar
+        
+        # Main content area with 1:2 split
         dbc.Container(
             [
-                # Add margin-top to account for fixed navbar
-                html.Div(style={"margin-top": "80px"}),  # Spacer for fixed navbar
                 dbc.Row(
                     [
+                        # Left column (1/3 width) - ChatGPT-like analysis window
                         dbc.Col(
-                            [
-                                html.H1(
-                                    "Enhanced Data Analysis Platform",
-                                    className="text-center my-4",
-                                ),
-                                html.P(
-                                    "Upload data files (Pickle, CSV, Parquet) and context files (Text, PDF, Word) for comprehensive analysis",
-                                    className="text-center lead mb-4",
-                                ),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Card(
-                                    [
-                                        dbc.CardBody(
-                                            [
-                                                html.H5(
-                                                    "Unified File Upload",
-                                                    className="card-title",
-                                                ),
-                                                html.P(
-                                                    "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
-                                                    className="card-text text-muted",
-                                                ),
-                                                dcc.Upload(
-                                                    id="unified-upload",
-                                                    children=html.Div(
+                            dbc.Card(
+                                [
+                                    dbc.CardBody(
+                                        [
+                                            # Title and description
+                                            html.H2(
+                                                "Enhanced Data Analysis Platform",
+                                                className="mb-3",
+                                                style={"fontSize": "1.5rem"}
+                                            ),
+                                            html.P(
+                                                "Upload data files (Pickle, CSV, Parquet) and context files (Text, PDF, Word) for comprehensive analysis",
+                                                className="lead mb-4",
+                                                style={"fontSize": "0.9rem"}
+                                            ),
+                                            
+                                            # Analysis sections
+                                            html.Div(
+                                                [
+                                                    # Correlation Analysis
+                                                    html.Div(
                                                         [
-                                                            html.I(
-                                                                className="fas fa-upload me-2"
+                                                            html.H5("Correlation Analysis", className="mb-3"),
+                                                            html.Button(
+                                                                "Analyze Correlations",
+                                                                id="analyze-correlations-button",
+                                                                className="btn btn-primary btn-sm mb-3",
                                                             ),
-                                                            "Drag and Drop or ",
-                                                            html.A("Select Files"),
-                                                        ]
+                                                            dcc.Loading(
+                                                                id="loading-correlation",
+                                                                type="circle",
+                                                                children=html.Div(id="correlation-loading-output"),
+                                                            ),
+                                                            html.Div(
+                                                                id="correlation-output",
+                                                                className="analysis-output"
+                                                            ),
+                                                        ],
+                                                        className="mb-4",
                                                     ),
-                                                    style={
-                                                        "width": "100%",
-                                                        "height": "60px",
-                                                        "lineHeight": "60px",
-                                                        "borderWidth": "1px",
-                                                        "borderStyle": "dashed",
-                                                        "borderRadius": "5px",
-                                                        "textAlign": "center",
-                                                        "margin": "10px 0",
-                                                    },
-                                                    multiple=True,
-                                                ),
-                                                html.P(
-                                                    "Files will be automatically analyzed upon upload",
-                                                    className="text-muted small mt-2",
-                                                ),
-                                            ]
-                                        )
-                                    ],
-                                    className="mb-4",
-                                ),
-                            ],
-                            width=12,
+                                                    
+                                                    # AI Analysis Plan
+                                                    html.Div(
+                                                        [
+                                                            html.H5("AI Analysis Plan", className="mb-3"),
+                                                            html.Button(
+                                                                "Generate Analysis Plan",
+                                                                id="generate-plan-button",
+                                                                className="btn btn-primary btn-sm mb-3",
+                                                            ),
+                                                            dcc.Loading(
+                                                                id="loading-plan",
+                                                                type="circle",
+                                                                children=html.Div(id="plan-loading-output"),
+                                                            ),
+                                                            html.Div(
+                                                                id="ai-plan-output",
+                                                                className="analysis-output"
+                                                            ),
+                                                        ],
+                                                        className="mb-4",
+                                                    ),
+                                                    
+                                                    # AI Analysis Results
+                                                    html.Div(
+                                                        [
+                                                            html.H5("AI Analysis Results", className="mb-3"),
+                                                            html.Div(
+                                                                id="ai-results-output",
+                                                                className="analysis-output"
+                                                            ),
+                                                        ],
+                                                        className="mb-4",
+                                                    ),
+                                                ],
+                                                style={
+                                                    "maxHeight": "calc(100vh - 300px)",
+                                                    "overflowY": "auto",
+                                                    "padding": "10px",
+                                                }
+                                            ),
+                                        ]
+                                    )
+                                ],
+                                className="h-100 border-0",
+                                style={
+                                    "backgroundColor": "#f8f9fa",
+                                    "borderRadius": "15px",
+                                    "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
+                                }
+                            ),
+                            width=4,
+                            style={"minHeight": "calc(100vh - 160px)"}  # Account for navbar and footer
                         ),
-                    ]
-                ),
-                # Loading spinner for when analysis is running
-                dbc.Row(
-                    [
+                        
+                        # Right column (2/3 width)
                         dbc.Col(
                             [
-                                dcc.Loading(
-                                    id="loading-analysis",
-                                    type="circle",
-                                    children=html.Div(id="loading-output"),
+                                # File upload section
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Card(
+                                                    [
+                                                        dbc.CardBody(
+                                                            [
+                                                                html.H5(
+                                                                    "Unified File Upload",
+                                                                    className="card-title",
+                                                                ),
+                                                                html.P(
+                                                                    "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
+                                                                    className="card-text text-muted",
+                                                                ),
+                                                                dcc.Upload(
+                                                                    id="unified-upload",
+                                                                    children=html.Div(
+                                                                        [
+                                                                            html.I(
+                                                                                className="fas fa-upload me-2"
+                                                                            ),
+                                                                            "Drag and Drop or ",
+                                                                            html.A("Select Files"),
+                                                                        ]
+                                                                    ),
+                                                                    style={
+                                                                        "width": "100%",
+                                                                        "height": "60px",
+                                                                        "lineHeight": "60px",
+                                                                        "borderWidth": "1px",
+                                                                        "borderStyle": "dashed",
+                                                                        "borderRadius": "5px",
+                                                                        "textAlign": "center",
+                                                                        "margin": "10px 0",
+                                                                    },
+                                                                    multiple=True,
+                                                                ),
+                                                                html.P(
+                                                                    "Files will be automatically analyzed upon upload",
+                                                                    className="text-muted small mt-2",
+                                                                ),
+                                                            ]
+                                                        )
+                                                    ],
+                                                    className="mb-4",
+                                                ),
+                                            ],
+                                            width=12,
+                                        ),
+                                    ]
                                 ),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # Display files currently being analyzed
-                dbc.Row([dbc.Col([html.Div(id="files-being-analyzed")], width=12)]),
-                # Error messages
-                dbc.Row([dbc.Col([html.Div(id="error-message")], width=12)]),
-                # Results section
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.Div(id="data-output", className="mt-4"),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # Context files section
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.Div(id="context-output", className="mt-4"),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # Correlation analysis section
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.H3("Correlation Analysis", className="mt-4 mb-3"),
-                                html.Button(
-                                    "Analyze Correlations",
-                                    id="analyze-correlations-button",
-                                    className="btn btn-primary mb-3",
+                                
+                                # Loading and status sections
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Loading(
+                                                    id="loading-analysis",
+                                                    type="circle",
+                                                    children=html.Div(id="loading-output"),
+                                                ),
+                                            ],
+                                            width=12,
+                                        )
+                                    ]
                                 ),
-                                dcc.Loading(
-                                    id="loading-correlation",
-                                    type="circle",
-                                    children=html.Div(id="correlation-loading-output"),
-                                ),
-                                html.Div(id="correlation-output"),
+                                dbc.Row([dbc.Col([html.Div(id="files-being-analyzed")], width=12)]),
+                                dbc.Row([dbc.Col([html.Div(id="error-message")], width=12)]),
+                                
+                                # Results sections
+                                dbc.Row([dbc.Col([html.Div(id="data-output", className="mt-4")], width=12)]),
+                                dbc.Row([dbc.Col([html.Div(id="context-output", className="mt-4")], width=12)]),
+                                
+                                # Store components
+                                dcc.Store(id="data-store", storage_type="memory"),
+                                dcc.Store(id="context-store", storage_type="memory"),
+                                dcc.Store(id="correlation-store", storage_type="memory"),
+                                dcc.Store(id="ai-plan-store", storage_type="memory"),
                             ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # AI Analysis Plan section
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.H3("AI Analysis Plan", className="mt-4 mb-3"),
-                                html.Button(
-                                    "Generate Analysis Plan",
-                                    id="generate-plan-button",
-                                    className="btn btn-primary mb-3",
-                                ),
-                                dcc.Loading(
-                                    id="loading-plan",
-                                    type="circle",
-                                    children=html.Div(id="plan-loading-output"),
-                                ),
-                                html.Div(id="ai-plan-output"),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # AI Analysis Results section
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.H3("AI Analysis Results", className="mt-4 mb-3"),
-                                html.Div(id="ai-results-output"),
-                            ],
-                            width=12,
-                        )
-                    ]
-                ),
-                # Store components for data
-                dcc.Store(id="data-store", storage_type="memory"),
-                dcc.Store(id="context-store", storage_type="memory"),
-                dcc.Store(id="correlation-store", storage_type="memory"),
-                dcc.Store(id="ai-plan-store", storage_type="memory"),
-                # Footer
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.Hr(),
-                                html.P(
-                                    "Powered by E2B Sandbox and OpenAI - A secure environment for comprehensive data analysis",
-                                    className="text-center text-muted small",
-                                ),
-                            ],
-                            width=12,
-                        )
+                            width=8,
+                        ),
                     ],
-                    className="mt-5",
+                    className="g-0",  # Remove gutters between columns
                 ),
             ],
             fluid=True,
+            style={"minHeight": "calc(100vh - 160px)"}  # Account for navbar and footer
+        ),
+        
+        # Footer
+        html.Footer(
+            dbc.Container(
+                dbc.Row(
+                    dbc.Col(
+                        html.P(
+                            "Powered by E2B Sandbox and OpenAI - A secure environment for comprehensive data analysis",
+                            className="text-center text-muted mb-0 py-3",
+                        ),
+                        width=12,
+                    ),
+                ),
+                fluid=True,
+            ),
+            style={
+                "backgroundColor": "#f8f9fa",  # Light gray background
+                "position": "fixed",
+                "bottom": 0,
+                "width": "100%",
+                "borderTop": "1px solid #dee2e6"  # Light border at the top
+            },
         ),
     ],
-    style={"padding": "20px"},
+    style={"paddingBottom": "60px"}  # Add padding to prevent content from being hidden by footer
 )
 
 # Set the layout
