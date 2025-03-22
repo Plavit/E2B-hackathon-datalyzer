@@ -25,7 +25,9 @@ Were you ever thrown into a problem head-first, needing to get yourself oriented
 
 TBD image
 
-Well WORRY NOT, for we have developed a ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST Deep Data Analyzer! How does it work?:
+Well __WORRY NOT__, for we have developed a __ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST__ (🚀🤖) Deep Data Analyzer! 
+
+How does it work?:
  1) Upload all data to analyze (CSV, Pickle, Parquet, pdf documentation, you name it)
  2) The system analyzes correlations between files
  3) See high level analysis of relationships and data interpretation
@@ -43,7 +45,7 @@ Data types that are supported:
 - json
 - pdf
 - docx
-- xlsc
+- xlsx
 - Relevant public datasets for deep search (?)
 
 Would be nice, but better luck next time:
@@ -52,13 +54,16 @@ Would be nice, but better luck next time:
 
 ## How we built it
 It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, specifically:
+
 - Agentic backend is via E2B sandboxing (obviously) and LLM API calls, we use OpenAI
 - Internal logic is vibe-coded in python
 - Dependencies: pandas, pyarrow, fastparquet, python-docx, PyPDF2, openai, dash
 - Frontend is using Plotly D
 
+Built by [Marek Miltner (@Plavit)](https://github.com/Plavit/) and [Šimon odhajský (@Shippy)](https://github.com/Shippy/)
+
 Start of hackathon when we refined the idea: ca. 🕚11AM:
-TBD image
+![photo_2025-03-22_15-35-09](https://github.com/user-attachments/assets/a2bd3ff6-10f8-4c2f-a484-ed2440a2852c)
 
 End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was submission deadline how did you guess?):
 TBD image

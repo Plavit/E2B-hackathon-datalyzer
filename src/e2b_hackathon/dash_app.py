@@ -1914,6 +1914,8 @@ def update_execution_results(n_clicks, plan_data, data_store):
 
         # Get the code to execute
         analysis_code = plan_data["analysis_code"]
+        if isinstance(analysis_code, list):
+            analysis_code = "\n".join(analysis_code)
 
         # Get data file paths
         data_paths = {}
@@ -2921,7 +2923,7 @@ If you're not confident about any join keys, return an empty array [].
 
             # Call the OpenAI API
             response = openai_client.chat.completions.create(
-                model="gpt-4-turbo",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -3111,11 +3113,12 @@ Respond with a JSON object containing:
 - "analysis_code": Complete Python code that could be executed
 
 The code should be self-contained and handle reading the files from their paths.
+It should contain no placeholders or truncations, only valid Python.
 """
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "system",
