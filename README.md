@@ -1,4 +1,4 @@
-# E2B Deep Data Project Mess Analyzer
+# D2MA Deep Data Mess Analyzer for the E2B Hackathon
 
 A comprehensive tool for analyzing data files along with text/document context, finding correlations, and generating AI-powered analysis plans.
 
