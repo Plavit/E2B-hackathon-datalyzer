@@ -29,6 +29,7 @@ dependencies = [
     "emoji>=2.14.1",
     "cairosvg>=2.7.1",
     "requests>=2.32.3",
+    "modal>=0.73.116",
 ]
 
 [project.scripts]
