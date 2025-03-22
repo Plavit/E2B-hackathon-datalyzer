@@ -34,6 +34,8 @@ app = dash.Dash(
     title="Datalyzer",
 )
 log = structlog.get_logger()
+SEED = 42
+
 
 # Initialize OpenAI client (will use API key from environment)
 try:
@@ -3112,13 +3114,17 @@ Respond with a JSON object containing:
 - "analysis_plan": A step-by-step plan for data analysis
 - "analysis_code": Complete Python code that could be executed
 
-The code should be self-contained and handle reading the files from their paths.
-It should contain no placeholders or truncations, only valid Python.
+In "analysis_code":
+
+- The code should be self-contained and handle reading the files from their paths.
+- It should contain no placeholders or truncations, only valid Python.
+- Avoid triple backticks at the start or the end, just issue Python straightaway.
 """
 
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o",
+            seed=SEED,
             messages=[
                 {
                     "role": "system",
