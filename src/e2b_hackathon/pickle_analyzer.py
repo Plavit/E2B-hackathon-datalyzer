@@ -98,7 +98,7 @@ print(f"File written to {remote_path} ({file_size} bytes)")
                 "Executing code to create file in sandbox", remote_path=remote_path
             )
 
-            result = code_interpreter.run_code(code)
+            result = code_interpreter.run_code(code, request_timeout=15)
 
             if hasattr(result, "text"):
                 log.debug("Sandbox file creation result", result=result.text)
