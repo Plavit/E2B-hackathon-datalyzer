@@ -17,4 +17,5 @@ temp_files/*
 
 # Super secret data we will never share to anyone ever this is our holy pledge as hackers at the E2B hackathon, pinky promise
 super_secret_data/*
+# Very serious data folder used by serious people who are also hackers but probably wear ties and work in cubicles or some shit. We also do not share this data with anyone ever.
 data/*
