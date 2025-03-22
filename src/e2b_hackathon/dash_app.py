@@ -249,9 +249,29 @@ def create_file_summary_card(file_name: str, file_info: Dict[str, Any]) -> dbc.C
     Returns:
         A Dash Bootstrap Components Card
     """
-    # Extract basic information
+    # Extract file type for additional component generation
     file_type = file_info.get("Type", "Unknown")
-    file_size = file_info.get("Size", "Unknown")
+
+    # Create list group items dynamically from file_info
+    list_group_items = []
+    for key, value in file_info.items():
+        # Skip complex nested data that would be better displayed in the additional info section
+        if isinstance(value, (dict, list, tuple)) or key in [
+            "sample_keys",
+            "sample_elements",
+            "sample_data",
+            "columns",
+            "dtypes",
+        ]:
+            continue
+
+        # Format the value as string if it's not already
+        if not isinstance(value, str):
+            value = str(value)
+
+        list_group_items.append(
+            dbc.ListGroupItem([html.Strong(f"{key}: "), html.Span(value)])
+        )
 
     # Create card content
     card_content = [
@@ -259,17 +279,7 @@ def create_file_summary_card(file_name: str, file_info: Dict[str, Any]) -> dbc.C
         dbc.CardBody(
             [
                 html.H6("Basic Information", className="card-subtitle mb-2 text-muted"),
-                dbc.ListGroup(
-                    [
-                        dbc.ListGroupItem(
-                            [html.Strong("Type: "), html.Span(file_type)]
-                        ),
-                        dbc.ListGroupItem(
-                            [html.Strong("Size: "), html.Span(file_size)]
-                        ),
-                    ],
-                    className="mb-3",
-                ),
+                dbc.ListGroup(list_group_items, className="mb-3"),
                 # Additional information based on file type
                 get_additional_info_component(file_type, file_info),
             ]
@@ -608,6 +618,9 @@ def update_output(contents, filenames):
 
             for file_name, file_info in results.items():
                 # Create a card for each file
+                if file_name.startswith("[2m"):
+                    log.info("Skipping overall results", file_info=file_info)
+                    continue
                 card = create_file_summary_card(file_name, file_info)
                 file_cards_row.append(dbc.Col(card, md=6, lg=4))
 
@@ -707,7 +720,7 @@ def toggle_raw_output(n_clicks, is_open):
 
 def main():
     """Run the Dash app server"""
-    app.run_server(debug=True)
+    app.run(debug=True)
 
 
 if __name__ == "__main__":
