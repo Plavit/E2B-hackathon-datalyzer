@@ -79,7 +79,7 @@ layout = dbc.Container(
                                             className="card-title",
                                         ),
                                         html.P(
-                                            "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx) for analysis. Files will be automatically categorized based on extension.",
+                                            "Upload any files (.pkl, .pickle, .csv, .parquet, .txt, .pdf, .docx, .json, .geojson) for analysis. Files will be automatically categorized based on extension.",
                                             className="card-text text-muted",
                                         ),
                                         dcc.Upload(
@@ -248,7 +248,16 @@ def save_uploaded_files(content, filename, file_type="data"):
         Path to the saved file
     """
     valid_extensions = {
-        "data": [".pkl", ".pickle", ".csv", ".parquet", ".xls", ".xlsx"],
+        "data": [
+            ".pkl",
+            ".pickle",
+            ".csv",
+            ".parquet",
+            ".xls",
+            ".xlsx",
+            ".json",
+            ".geojson",
+        ],
         "context": [".txt", ".pdf", ".docx", ".doc", ".md"],
     }
 
@@ -709,6 +718,207 @@ def get_additional_info_component(
             ]
         )
 
+    elif file_type == "JSON" or file_type == "GeoJSON":
+        # Information for JSON/GeoJSON files
+        structure = file_info.get("Structure", "Unknown")
+
+        # Create list items with basic info
+        json_info_items = []
+
+        if structure == "Dictionary":
+            # For dictionary structure
+            keys_count = file_info.get("Number of keys", "Unknown")
+            top_keys = file_info.get("Top-level keys", [])
+
+            json_info_items.extend(
+                [
+                    dbc.ListGroupItem(
+                        [html.Strong("Structure: "), html.Span(structure)]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Number of keys: "), html.Span(str(keys_count))]
+                    ),
+                    dbc.ListGroupItem(
+                        [
+                            html.Strong("Top-level keys: "),
+                            html.Span(", ".join(str(k) for k in top_keys)),
+                        ]
+                    ),
+                ]
+            )
+
+            # Add GeoJSON specific information if available
+            if "GeoJSON Type" in file_info:
+                json_type = file_info.get("GeoJSON Type", "")
+                json_info_items.append(
+                    dbc.ListGroupItem(
+                        [html.Strong("GeoJSON Type: "), html.Span(json_type)]
+                    )
+                )
+
+                if "Features Count" in file_info:
+                    features_count = file_info.get("Features Count", 0)
+                    json_info_items.append(
+                        dbc.ListGroupItem(
+                            [
+                                html.Strong("Features Count: "),
+                                html.Span(str(features_count)),
+                            ]
+                        )
+                    )
+
+                if "Geometry Type" in file_info:
+                    geometry_type = file_info.get("Geometry Type", "Unknown")
+                    json_info_items.append(
+                        dbc.ListGroupItem(
+                            [html.Strong("Geometry Type: "), html.Span(geometry_type)]
+                        )
+                    )
+
+                if "Property Keys" in file_info:
+                    property_keys = file_info.get("Property Keys", [])
+                    if isinstance(property_keys, list):
+                        property_keys_str = ", ".join(
+                            str(k) for k in property_keys[:10]
+                        )
+                        if len(property_keys) > 10:
+                            property_keys_str += "... (and more)"
+                        json_info_items.append(
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Property Keys: "),
+                                    html.Span(property_keys_str),
+                                ]
+                            )
+                        )
+                    else:
+                        json_info_items.append(
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Property Keys: "),
+                                    html.Span(str(property_keys)),
+                                ]
+                            )
+                        )
+
+        elif structure == "List":
+            # For list structure
+            items_count = file_info.get("Number of items", 0)
+            item_type = file_info.get("Item Type", "Unknown")
+
+            json_info_items.extend(
+                [
+                    dbc.ListGroupItem(
+                        [html.Strong("Structure: "), html.Span(structure)]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Number of items: "), html.Span(str(items_count))]
+                    ),
+                    dbc.ListGroupItem(
+                        [html.Strong("Item Type: "), html.Span(item_type)]
+                    ),
+                ]
+            )
+
+            if item_type == "Dictionary" and "Sample Item Keys" in file_info:
+                sample_keys = file_info.get("Sample Item Keys", [])
+                sample_keys_str = ", ".join(str(k) for k in sample_keys[:10])
+                if len(sample_keys) > 10:
+                    sample_keys_str += "... (and more)"
+                json_info_items.append(
+                    dbc.ListGroupItem(
+                        [html.Strong("Sample Item Keys: "), html.Span(sample_keys_str)]
+                    )
+                )
+
+        components.extend(
+            [
+                html.H6(f"{file_type} Details", className="mt-3"),
+                dbc.ListGroup(json_info_items, className="mb-3"),
+            ]
+        )
+
+        # If we have a DataFrame representation, show it
+        df_key = (
+            "Properties DataFrame"
+            if file_type == "GeoJSON"
+            else "DataFrame Representation"
+        )
+        if df_key in file_info:
+            df_info = file_info[df_key]
+
+            components.extend(
+                [
+                    html.H6(f"{file_type} as DataFrame", className="mt-3"),
+                    dbc.ListGroup(
+                        [
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Shape: "),
+                                    html.Span(df_info.get("Shape", "Unknown")),
+                                ]
+                            ),
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Columns: "),
+                                    html.Span(
+                                        ", ".join(
+                                            str(c)
+                                            for c in df_info.get("Columns", [])[:10]
+                                        )
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                ]
+            )
+
+            # Show sample data if available
+            if "Sample Data" in df_info:
+                components.append(html.H6("Sample Data:", className="mt-3"))
+                sample_data = df_info.get("Sample Data", [])
+
+                if (
+                    sample_data
+                    and isinstance(sample_data, list)
+                    and len(sample_data) > 0
+                ):
+                    # Create a table from the sample data
+                    if isinstance(sample_data[0], dict):
+                        columns = list(sample_data[0].keys())
+
+                        # Table header
+                        table_header = [html.Tr([html.Th(col) for col in columns])]
+
+                        # Table rows
+                        table_body = []
+                        for row in sample_data:
+                            table_body.append(
+                                html.Tr(
+                                    [html.Td(str(row.get(col, ""))) for col in columns]
+                                )
+                            )
+
+                        components.append(
+                            dbc.Table(
+                                [html.Thead(table_header), html.Tbody(table_body)],
+                                bordered=True,
+                                hover=True,
+                                responsive=True,
+                                size="sm",
+                                className="mb-3",
+                            )
+                        )
+                    else:
+                        components.append(
+                            html.Pre(
+                                str(sample_data),
+                                style={"maxHeight": "200px", "overflowY": "auto"},
+                            )
+                        )
+
     # Add collapsible card for the raw output
     unique_id = hash(f"{file_type}{str(hash(str(file_info)))}")
     components.append(
@@ -777,7 +987,7 @@ def determine_file_type(filename):
     ext = os.path.splitext(filename)[1].lower()
 
     # Define data file extensions
-    data_extensions = [".pkl", ".pickle", ".csv", ".parquet"]
+    data_extensions = [".pkl", ".pickle", ".csv", ".parquet", ".json", ".geojson"]
 
     # Define context file extensions
     context_extensions = [".txt", ".pdf", ".docx", ".doc"]
@@ -1268,6 +1478,138 @@ def update_correlation_analysis(n_clicks, data_results):
                         dbc.CardHeader(html.H5("Common Data Types", className="mb-0")),
                         dbc.CardBody([html.Div(types_components)]),
                     ],
+                    className="mb-4",
+                )
+            )
+
+        # LLM-suggested join keys (NEW SECTION)
+        llm_joins = correlation_results.get("llm_suggested_joins", [])
+        if llm_joins:
+            # Sort by confidence score in descending order
+            llm_joins = sorted(
+                llm_joins, key=lambda x: x.get("confidence", 0), reverse=True
+            )
+
+            llm_joins_items = []
+            for join in llm_joins:
+                # Format the confidence as a percentage
+                confidence = join.get("confidence", 0)
+                confidence_str = f"{confidence * 100:.0f}%" if confidence else "Unknown"
+
+                # Create badge with appropriate color based on confidence
+                if confidence >= 0.7:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="success", className="me-1"
+                    )
+                elif confidence >= 0.4:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="warning", className="me-1"
+                    )
+                else:
+                    confidence_badge = dbc.Badge(
+                        confidence_str, color="secondary", className="me-1"
+                    )
+
+                llm_joins_items.append(
+                    dbc.ListGroupItem(
+                        [
+                            html.Strong(
+                                f"{join.get('source_file', 'Unknown')}:{join.get('source_column', 'Unknown')}"
+                            ),
+                            " ⟷ ",
+                            html.Strong(
+                                f"{join.get('target_file', 'Unknown')}:{join.get('target_column', 'Unknown')}"
+                            ),
+                            html.Br(),
+                            confidence_badge,
+                            html.Span(
+                                join.get("explanation", "No explanation provided"),
+                                className="text-muted small",
+                            ),
+                        ]
+                    )
+                )
+
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            [
+                                html.H5("AI-Suggested Join Keys", className="mb-0"),
+                                html.Small(
+                                    "Based on column names and sample values analysis",
+                                    className="text-muted",
+                                ),
+                            ]
+                        ),
+                        dbc.CardBody(
+                            [dbc.ListGroup(llm_joins_items, className="mb-3")]
+                        ),
+                    ],
+                    className="mb-4 border-primary",  # Highlight this card with a primary border
+                )
+            )
+        elif (
+            "llm_no_joins_found" in correlation_results
+            and correlation_results["llm_no_joins_found"]
+        ):
+            # LLM was called but didn't find any potential join keys
+            output_components.append(
+                dbc.Card(
+                    [
+                        dbc.CardHeader(
+                            [
+                                html.H5("AI-Suggested Join Keys", className="mb-0"),
+                                html.Small(
+                                    "Based on column names and sample values analysis",
+                                    className="text-muted",
+                                ),
+                            ]
+                        ),
+                        dbc.CardBody(
+                            [
+                                html.P(
+                                    [
+                                        html.I(
+                                            className="fas fa-info-circle me-2 text-info"
+                                        ),
+                                        "No potential join keys were identified by the AI analysis. This could mean:",
+                                    ],
+                                    className="mb-2",
+                                ),
+                                html.Ul(
+                                    [
+                                        html.Li(
+                                            "The datasets may not be directly relatable"
+                                        ),
+                                        html.Li(
+                                            "The column names and sample values don't provide enough context"
+                                        ),
+                                        html.Li(
+                                            "The relationships may be more complex than direct column matches"
+                                        ),
+                                    ],
+                                    className="mb-3",
+                                ),
+                                html.P(
+                                    "Consider examining the data manually or providing more context files to help identify potential relationships.",
+                                    className="small text-muted",
+                                ),
+                            ]
+                        ),
+                    ],
+                    className="mb-4 border-info",
+                )
+            )
+        elif "llm_analysis_error" in correlation_results:
+            # Show error if LLM analysis failed
+            output_components.append(
+                dbc.Alert(
+                    [
+                        html.H6("AI Join Analysis Error", className="alert-heading"),
+                        html.P(correlation_results["llm_analysis_error"]),
+                    ],
+                    color="warning",
                     className="mb-4",
                 )
             )
@@ -1837,6 +2179,123 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                 )
                 return {"error": f"Failed to analyze Parquet file: {str(e)}"}
 
+        elif ext in [".json", ".geojson"]:
+            try:
+                with open(file_path, "r") as f:
+                    json_data = json.load(f)
+
+                # Basic information about the JSON file
+                file_info["Type"] = "GeoJSON" if ext == ".geojson" else "JSON"
+
+                # Analyze the structure of the JSON
+                if isinstance(json_data, dict):
+                    file_info["Structure"] = "Dictionary"
+                    file_info["Number of keys"] = len(json_data)
+                    file_info["Top-level keys"] = list(json_data.keys())[
+                        :10
+                    ]  # Limit to first 10 keys
+
+                    # Check for GeoJSON structure
+                    if ext == ".geojson" or "type" in json_data:
+                        json_type = json_data.get("type", "")
+                        file_info["GeoJSON Type"] = json_type
+
+                        # Handle different GeoJSON types
+                        if json_type == "FeatureCollection" and "features" in json_data:
+                            features = json_data["features"]
+                            file_info["Features Count"] = len(features)
+
+                            # Analyze a sample feature
+                            if features and len(features) > 0:
+                                sample_feature = features[0]
+                                if "geometry" in sample_feature:
+                                    file_info["Geometry Type"] = sample_feature[
+                                        "geometry"
+                                    ].get("type", "Unknown")
+
+                                if "properties" in sample_feature:
+                                    props = sample_feature["properties"]
+                                    file_info["Property Keys"] = (
+                                        list(props.keys())
+                                        if isinstance(props, dict)
+                                        else "No properties"
+                                    )
+
+                        elif json_type in ["Feature"]:
+                            if "geometry" in json_data:
+                                file_info["Geometry Type"] = json_data["geometry"].get(
+                                    "type", "Unknown"
+                                )
+
+                            if "properties" in json_data:
+                                props = json_data["properties"]
+                                file_info["Property Keys"] = (
+                                    list(props.keys())
+                                    if isinstance(props, dict)
+                                    else "No properties"
+                                )
+
+                elif isinstance(json_data, list):
+                    file_info["Structure"] = "List"
+                    file_info["Number of items"] = len(json_data)
+
+                    # Analyze the first few items
+                    if json_data:
+                        sample_item = json_data[0]
+                        if isinstance(sample_item, dict):
+                            file_info["Item Type"] = "Dictionary"
+                            if len(json_data) > 0:
+                                file_info["Sample Item Keys"] = list(sample_item.keys())
+                        else:
+                            file_info["Item Type"] = type(sample_item).__name__
+
+                # If it's a structure that can be converted to a DataFrame
+                try:
+                    # For GeoJSON, extract properties as a DataFrame
+                    if (
+                        ext == ".geojson"
+                        and isinstance(json_data, dict)
+                        and "features" in json_data
+                    ):
+                        # Extract properties from features
+                        properties_list = []
+                        for feature in json_data["features"]:
+                            if "properties" in feature and isinstance(
+                                feature["properties"], dict
+                            ):
+                                properties_list.append(feature["properties"])
+
+                        if properties_list:
+                            df = pd.DataFrame(properties_list)
+                            df_info = analyze_dataframe(df)
+                            file_info["Properties DataFrame"] = df_info
+                    # For regular JSON that's a list of dictionaries
+                    elif (
+                        isinstance(json_data, list)
+                        and json_data
+                        and isinstance(json_data[0], dict)
+                    ):
+                        df = pd.DataFrame(json_data)
+                        df_info = analyze_dataframe(df)
+                        file_info["DataFrame Representation"] = df_info
+                except Exception as df_err:
+                    log.warning(
+                        "Failed to convert JSON to DataFrame",
+                        error=str(df_err),
+                        file_path=file_path,
+                    )
+
+                return file_info
+            except Exception as e:
+                log.error(
+                    f"Failed to analyze {'GeoJSON' if ext == '.geojson' else 'JSON'} file",
+                    error=str(e),
+                    file_path=file_path,
+                )
+                return {
+                    "error": f"Failed to analyze {'GeoJSON' if ext == '.geojson' else 'JSON'} file: {str(e)}"
+                }
+
         else:
             return {"error": f"Unsupported file type: {ext}"}
 
@@ -1903,11 +2362,12 @@ def analyze_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
                 ):
                     row[key] = str(value)
 
+        # Store sample data with consistent key name
         result["Sample Data"] = sample_data
     except Exception as e:
         # If serialization still fails, provide a simplified version
         log.error(f"Error serializing sample data: {str(e)}")
-        result["Sample Data"] = "Error serializing sample data"
+        result["Sample Data"] = []
 
     # Column statistics
     column_stats: Dict[str, Dict[str, Any]] = {}
@@ -2055,6 +2515,7 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
         "common_data_types": {},
         "similar_sizes": [],
         "potential_joins": [],
+        "llm_suggested_joins": [],  # New field for LLM-identified join keys
     }
 
     # Find common columns across DataFrames
@@ -2154,6 +2615,182 @@ def correlate_data_files(data_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 {"files": [curr_file, next_file], "row_counts": [curr_size, next_size]}
             )
     correlations["similar_sizes"] = similar_sizes
+
+    # NEW PART: Use LLM to identify potential join keys based on column names and sample values
+    if openai_client:
+        try:
+            # Prepare detailed information about each dataframe for the LLM
+            dataframe_details = {}
+            for fname, info in dataframes.items():
+                # Extract column information
+                columns = info.get("Columns", [])
+
+                # Extract sample data if available - check different possible keys
+                sample_data = []
+
+                # Try different keys that might contain sample data
+                for key in ["Sample Data", "sample_data", "SampleData"]:
+                    if key in info and info[key]:
+                        raw_sample = info[key]
+
+                        # Handle different formats
+                        if isinstance(raw_sample, list):
+                            sample_data = raw_sample
+                            break
+                        elif isinstance(raw_sample, str):
+                            # Try to parse JSON string
+                            try:
+                                if raw_sample.startswith("["):
+                                    sample_data = json.loads(
+                                        raw_sample.replace("'", '"')
+                                    )
+                                    break
+                                elif raw_sample.startswith("{"):
+                                    # Might be a dict format with columns as keys
+                                    sample_dict = json.loads(
+                                        raw_sample.replace("'", '"')
+                                    )
+                                    # Convert to records format if possible
+                                    if all(
+                                        isinstance(sample_dict[col], list)
+                                        for col in sample_dict
+                                    ):
+                                        # Get the length of the first list
+                                        first_col = list(sample_dict.keys())[0]
+                                        length = len(sample_dict[first_col])
+                                        # Create records
+                                        records = []
+                                        for i in range(length):
+                                            record = {}
+                                            for col, values in sample_dict.items():
+                                                if i < len(values):
+                                                    record[col] = values[i]
+                                            records.append(record)
+                                        sample_data = records
+                                        break
+                            except:
+                                # Failed to parse, continue to next key
+                                pass
+
+                # Create a summary of sample values for each column
+                column_samples = {}
+                for col in columns:
+                    col_str = str(col)
+                    col_values = []
+
+                    # Extract values from sample data
+                    for row in sample_data[:3]:  # Use up to 3 rows
+                        if isinstance(row, dict) and col_str in row:
+                            value = row[col_str]
+                            # Convert non-string values to strings
+                            if not isinstance(value, str):
+                                value = str(value)
+                            col_values.append(value)
+
+                    if col_values:
+                        column_samples[col_str] = col_values
+
+                # Add to dataframe details
+                dataframe_details[fname] = {
+                    "columns": columns,
+                    "column_samples": column_samples,
+                    "shape": info.get("Shape", "Unknown"),
+                    "dtypes": info.get("dtypes", {}),
+                }
+
+            # Prepare the prompt for the LLM
+            prompt = f"""
+You are analyzing multiple dataframes to identify potential join keys. I'll provide details about each dataframe including column names and sample values.
+
+Your task is to identify columns across different dataframes that could potentially be used as join keys, even if they have different column names. 
+Look for columns that might contain the same type of entity identifiers, foreign keys, or related information.
+
+Consider:
+1. Columns with similar names or semantically related names (e.g. 'user_id' and 'uid')
+2. Columns with similar value patterns
+3. Columns that might represent the same entities across different tables
+
+Here are the dataframes:
+{json.dumps(dataframe_details, indent=2)}
+
+Respond with a JSON array where each item represents a potential join relationship. Each item should be an object with these fields:
+- "source_file": String, name of the first dataframe
+- "source_column": String, column name in the first dataframe
+- "target_file": String, name of the second dataframe
+- "target_column": String, column name in the second dataframe
+- "confidence": Number between 0 and 1, your confidence in this relationship
+- "explanation": String, brief explanation of why these columns might be joinable
+
+Only include column pairs that have a reasonable chance of being related. Focus on quality over quantity.
+If you're not confident about any join keys, return an empty array [].
+"""
+
+            # Call the OpenAI API
+            response = openai_client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a data analysis expert that identifies potential relationships between dataframes.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,  # Lower temperature for more conservative suggestions
+            )
+
+            # Extract and parse the response
+            llm_response = response.choices[0].message.content
+
+            # Parse the JSON response
+            if llm_response:
+                try:
+                    suggested_joins = json.loads(llm_response)
+                    # Check if it's a list or if it's wrapped in another object
+                    if isinstance(suggested_joins, dict) and "joins" in suggested_joins:
+                        suggested_joins = suggested_joins["joins"]
+                    elif isinstance(suggested_joins, list):
+                        # Already in the right format
+                        pass
+                    elif isinstance(suggested_joins, dict):
+                        # Look for any array in the response
+                        found_array = False
+                        for key, value in suggested_joins.items():
+                            if isinstance(value, list):
+                                suggested_joins = value
+                                found_array = True
+                                break
+                        if not found_array:
+                            # No array found, create empty list
+                            suggested_joins = []
+                    else:
+                        # Not a recognized format, create empty list
+                        suggested_joins = []
+
+                    # Ensure it's a list
+                    if not isinstance(suggested_joins, list):
+                        suggested_joins = []
+
+                    correlations["llm_suggested_joins"] = suggested_joins
+                    # Add a flag to indicate the LLM was successfully called but found no joins
+                    if len(suggested_joins) == 0:
+                        correlations["llm_no_joins_found"] = True
+
+                    log.info("LLM suggested join keys", count=len(suggested_joins))
+                except json.JSONDecodeError as e:
+                    log.error(
+                        "Failed to parse LLM response as JSON",
+                        error=str(e),
+                        response=llm_response[:200],
+                    )
+        except Exception as e:
+            log.error(
+                "Error in LLM-based join key analysis",
+                error=str(e),
+                traceback=traceback.format_exc(),
+            )
+            # Don't fail the whole function if LLM analysis fails
+            correlations["llm_analysis_error"] = str(e)
 
     return correlations
 
