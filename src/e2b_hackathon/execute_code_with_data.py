@@ -85,7 +85,7 @@ def execute_code_with_data(
                 try:
                     # Upload the file to the sandbox using the files API
                     with open(file_path, "rb") as f:
-                        remote_path = sandbox.files.write(file_name, f)
+                        remote_path = sandbox.files.write(file_name, f.read())
 
                     # Store the remote path
                     remote_paths[file_name] = remote_path
@@ -98,7 +98,17 @@ def execute_code_with_data(
             # Modify the code to use the remote paths
             for file_name, remote_path in remote_paths.items():
                 # Replace file paths in the code
-                code = code.replace(file_path, remote_path)
+                try:
+                    code = code.replace(file_path, remote_path)
+                except Exception as e:
+                    logger.error(
+                        "Could not replace paths",
+                        code_type=type(code),
+                        code_len=len(code),
+                        code=code,
+                        file_path=file_path,
+                        remote_path=remote_path,
+                    )
 
         # Execute the code in the sandbox - no need for special plot capture code
         logger.info(f"Executing code in E2B sandbox (code length: {len(code)})")
