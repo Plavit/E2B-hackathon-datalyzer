@@ -124,4 +124,4 @@ All analysis of pickle files is performed securely in an E2B sandbox to prevent 
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Built with ❤️ by [Marek Miltner](https://github.com/Plavit) and [Šimon Podhajský](https://github.com/Shippy)
+Built with 🌲 by [Marek Miltner](https://github.com/Plavit) and [Šimon Podhajský](https://github.com/Shippy)
