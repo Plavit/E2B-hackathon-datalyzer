@@ -2,11 +2,10 @@ import os
 import sys
 import json
 import base64
-import pickle
 import traceback
 import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional
 import io
 
 import dash
@@ -20,9 +19,6 @@ import pandas as pd
 import numpy as np
 
 # For handling different file types
-from PyPDF2 import PdfReader
-from docx import Document
-import openai
 from openai import OpenAI
 
 from e2b_hackathon.pickle_analyzer import analyze_pickle_files
@@ -2939,11 +2935,12 @@ If you're not confident about any join keys, return an empty array [].
 
             # Extract and parse the response
             llm_response = response.choices[0].message.content
-            log.info(
-                "Received response from OpenAI",
-                response_length=len(llm_response),
-                response_snippet=llm_response[:100],
-            )
+            if llm_response:
+                log.info(
+                    "Received response from OpenAI",
+                    response_length=len(llm_response),
+                    response_snippet=llm_response[:100],
+                )
 
             # Log the full response for debugging
             log.debug("Full LLM response", response=llm_response)
@@ -2986,7 +2983,7 @@ If you're not confident about any join keys, return an empty array [].
                     else:
                         # Not a recognized format, create empty list
                         log.warning(
-                            f"Unrecognized format in LLM response, using empty list",
+                            "Unrecognized format in LLM response, using empty list",
                             type=type(suggested_joins).__name__,
                         )
                         suggested_joins = []
