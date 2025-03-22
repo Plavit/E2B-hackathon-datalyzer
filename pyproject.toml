@@ -1,0 +1,18 @@
+[project]
+name = "e2b-hackathon"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Simon Podhajsky", email = "simon.podhajsky@gmail.com" },
+    { name = "Marek Miltner", email = "marek.miltner@gmail.com" },
+]
+requires-python = ">=3.13"
+dependencies = ["e2b-code-interpreter>=1.1.1", "python-dotenv>=1.0.1"]
+
+[project.scripts]
+e2b-hackathon = "e2b_hackathon:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
