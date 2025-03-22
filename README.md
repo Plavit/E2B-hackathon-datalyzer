@@ -16,7 +16,7 @@
 
 # D2MA Deep Data Mess Analyzer for the E2B Hackathon
 
-
+[Watch the video](https://www.loom.com/share/017f3f4ee1d74696887ae12d0b6050d5)
 
 A comprehensive tool for analyzing data files along with text/document context, finding correlations and generating AI-powered analysis.
 
