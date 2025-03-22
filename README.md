@@ -23,7 +23,9 @@ A comprehensive tool for analyzing data files along with text/document context, 
 ## Problem Statement
 Were you ever thrown into a problem head-first, needing to get yourself oriented in a new space? Be it for science, for business or just for a fun side-project, that can be a start of a gruelling, weeks long process of data curation, analysis and understanding that can suck the joy out of even the most exciting of projects:
 
-TBD image
+<div align="center">
+  <img src="img/data-overwhelm.png" alt="Data Overwhelm: Multiple folders and files leading to overwhelmed face emoji" width="600"/>
+</div>
 
 Well __WORRY NOT__, for we have developed a __ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST__ (🚀🤖) Deep Data Analyzer! 
 
@@ -34,8 +36,7 @@ How does it work?:
  4) Perform agentic follow-up analysis via appropriate prompts
  5) All of the above is executed securely in the E2B sandbox
 
-
-TBD image
+![Workflow](img/workflow.png)
 
 Data types that are supported:
 - csv

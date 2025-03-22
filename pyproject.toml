@@ -26,6 +26,9 @@ dependencies = [
     "openpyxl>=3.1.5",
     "matplotlib>=3.10.1",
     "seaborn>=0.13.2",
+    "emoji>=2.14.1",
+    "cairosvg>=2.7.1",
+    "requests>=2.32.3",
 ]
 
 [project.scripts]
