@@ -23,7 +23,8 @@ image = modal.Image.debian_slim().pip_install(
         "seaborn",
     ]
 )
-app = modal.App(image=image)
+image_with_source = image.add_local_python_source("e2b_hackathon")
+app = modal.App("d2ma", image=image_with_source)
 
 
 @app.function(
