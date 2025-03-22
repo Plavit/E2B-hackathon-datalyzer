@@ -3,14 +3,29 @@
 A comprehensive tool for analyzing data files along with text/document context, finding correlations, and generating AI-powered analysis plans.
 
 ## Problem Statement
-Were you ever thrown into a problem head-first, needing to ? Be it for science, for business or just for a fun side-project, that can be a start of a gruelling, weeks long process of data curation, analysis and understanding that can suck the joy out of even the most exciting of projects:
+Were you ever thrown into a problem head-first, needing to get yourself oriented in a new space? Be it for science, for business or just for a fun side-project, that can be a start of a gruelling, weeks long process of data curation, analysis and understanding that can suck the joy out of even the most exciting of projects:
 
 TBD image
 
 Well WORRY NOT, for we have developed a ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST Deep Data Analyzer! How does it work?
-1
+ 1) Upload all data to analyze
+ 2) See high level analysis of relationships and data interpretation
+ 3) Perform agentic follow-up analysis
 
 TBD image
+
+Data types that are supported:
+- csv
+- pickle
+- xml
+- json
+- pdf (?)
+- docx (?)
+- Relevant public datasets for deep search (?)
+
+Would be nice, but better luck next time:
+- External databases via API keys
+- snowflake for all snowflakes out there
 
 ## How we built it
 It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, specifically:
@@ -18,10 +33,10 @@ It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, 
 - internal logic is vibe-coded in python
 - frontend is using Plotly dash
 
-Start of hackathon when we refined the idea: ca. 11AM:
+Start of hackathon when we refined the idea: ca. 🕚11AM:
 TBD image
 
-End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was deadline):
+End of hackathon, ca. 🕠17\:30:01 (yes, 17:30 was submission deadline how did you guess?):
 TBD image
 
 ## Features
