@@ -1,26 +1,31 @@
 # D2MA Deep Data Mess Analyzer for the E2B Hackathon
 
-A comprehensive tool for analyzing data files along with text/document context, finding correlations, and generating AI-powered analysis plans.
+A comprehensive tool for analyzing data files along with text/document context, finding correlations and generating AI-powered analysis.
 
 ## Problem Statement
 Were you ever thrown into a problem head-first, needing to get yourself oriented in a new space? Be it for science, for business or just for a fun side-project, that can be a start of a gruelling, weeks long process of data curation, analysis and understanding that can suck the joy out of even the most exciting of projects:
 
 TBD image
 
-Well WORRY NOT, for we have developed a ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST Deep Data Analyzer! How does it work?
- 1) Upload all data to analyze
- 2) See high level analysis of relationships and data interpretation
- 3) Perform agentic follow-up analysis
+Well WORRY NOT, for we have developed a ROBUST(🤞™️) OPEN SOURCE (📖😮) AI-FIRST Deep Data Analyzer! How does it work?:
+ 1) Upload all data to analyze (CSV, Pickle, Parquet, pdf documentation, you name it)
+ 2) The system analyzes correlations between files
+ 3) See high level analysis of relationships and data interpretation
+ 4) Perform agentic follow-up analysis via appropriate prompts
+ 5) All of the above is executed securely in the E2B sandbox
+
 
 TBD image
 
 Data types that are supported:
 - csv
 - pickle
+- parquet
 - xml
 - json
-- pdf (?)
-- docx (?)
+- pdf
+- docx
+- xlsc
 - Relevant public datasets for deep search (?)
 
 Would be nice, but better luck next time:
@@ -29,9 +34,10 @@ Would be nice, but better luck next time:
 
 ## How we built it
 It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, specifically:
-- agentic backend is via E2B sandboxing (obviously) and LLM API calls
-- internal logic is vibe-coded in python
-- frontend is using Plotly dash
+- Agentic backend is via E2B sandboxing (obviously) and LLM API calls, we use OpenAI
+- Internal logic is vibe-coded in python
+- Dependencies: pandas, pyarrow, fastparquet, python-docx, PyPDF2, openai, dash
+- Frontend is using Plotly D
 
 Start of hackathon when we refined the idea: ca. 🕚11AM:
 TBD image
