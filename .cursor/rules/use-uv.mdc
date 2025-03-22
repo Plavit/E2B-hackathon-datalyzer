@@ -4,4 +4,5 @@ globs: *.py,pyproject.toml
 alwaysApply: false
 ---
 
-Use `uv add` instead of `pip install` to add packages.
+- Use `uv add` instead of `pip install` to add packages.
+- Don't add packages into `pyproject.toml` by directly editing the file; rather, use `uv add` and `uv remove`
