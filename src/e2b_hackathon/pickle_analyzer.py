@@ -24,7 +24,7 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
         )
 
     if verbose:
-        print(f"Initializing E2B sandbox...")
+        print("Initializing E2B sandbox...")
 
     with CodeInterpreter(api_key=api_key) as code_interpreter:
         # Upload each pickle file to the sandbox
