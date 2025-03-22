@@ -2,6 +2,7 @@ import os
 import base64
 import tempfile
 import json
+import traceback
 from typing import List, Dict, Any
 
 import dash
@@ -536,7 +537,20 @@ def update_output(contents, filenames):
     )
 
     # Save uploaded files to disk
-    saved_files = save_uploaded_files(contents, filenames)
+    try:
+        saved_files = save_uploaded_files(contents, filenames)
+        log.info("Files saved", count=len(saved_files), filenames=filenames)
+    except Exception as e:
+        log.error("Error saving files", error=str(e), exc_info=True)
+        return (
+            html.Div(),
+            "",
+            "",
+            dbc.Alert(
+                f"Error saving uploaded files: {str(e)}",
+                color="danger",
+            ),
+        )
 
     if not saved_files:
         return (
@@ -559,12 +573,19 @@ def update_output(contents, filenames):
         new_stdout = io.StringIO()
         sys.stdout = new_stdout
 
+        # Log file info before analysis
+        for file_path in saved_files:
+            file_size = os.path.getsize(file_path)
+            log.info("Analyzing file", path=file_path, size=file_size)
+
         # Run the analysis
         analyze_pickle_files(saved_files, verbose=True)
 
         # Restore stdout
         sys.stdout = old_stdout
         analysis_output = new_stdout.getvalue()
+
+        log.info("Analysis completed", output_length=len(analysis_output))
 
         # Parse results
         results = parse_analysis_results(analysis_output)
@@ -630,20 +651,23 @@ def update_output(contents, filenames):
         for file_path in saved_files:
             try:
                 os.remove(file_path)
-            except Exception:
-                pass
+            except Exception as e:
+                log.error("Error removing file", path=file_path, error=str(e))
 
         # Try to remove the temp directory
         try:
             os.rmdir(os.path.dirname(saved_files[0]))
-        except Exception:
-            pass
+        except Exception as e:
+            log.error("Error removing temp directory", error=str(e))
 
         return html.Div(output_elements), "", files_display, ""
 
     except Exception as e:
-        log.exception("Pickle file upload error")
-        # Return error message
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        log.error("Pickle file upload error", error=error_msg, traceback=tb)
+
+        # Return error message with detailed information
         return (
             html.Div(),
             "",
@@ -651,7 +675,14 @@ def update_output(contents, filenames):
             dbc.Alert(
                 [
                     html.H4("Error", className="alert-heading"),
-                    html.P(f"An error occurred during analysis: {str(e)}"),
+                    html.P(f"An error occurred during analysis: {error_msg}"),
+                    html.Hr(),
+                    html.Details(
+                        [
+                            html.Summary("Technical Details (click to expand)"),
+                            html.Pre(tb, style={"whiteSpace": "pre-wrap"}),
+                        ]
+                    ),
                     html.Hr(),
                     html.P(
                         "Please check that your pickle files are valid and try again.",

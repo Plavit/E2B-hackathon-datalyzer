@@ -65,7 +65,9 @@ def main() -> None:
     elif args.command == "web":
         from e2b_hackathon.dash_app import app
 
-        app.run(debug=args.debug, host=args.host, port=args.port)
+        app.run(
+            debug=args.debug, host=args.host, port=args.port
+        )  # Don't use `.run_server`, it's deprecated
 
 
 if __name__ == "__main__":

@@ -34,11 +34,13 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
         if verbose:
             print(f"Uploading {file_path} to sandbox...")
 
-        with open(file_path, "rb") as f:
-            remote_path = code_interpreter.files.write(f)
-            remote_paths.append((os.path.basename(file_path), remote_path))
-            if verbose:
-                print(f"  Uploaded to {remote_path}")
+        # Convert Path object to string if needed
+        file_path_str = str(file_path)
+        remote_path = code_interpreter.files.write(file_path_str)
+        remote_paths.append((os.path.basename(file_path_str), remote_path.path))
+
+        if verbose:
+            print(f"  Uploaded to {remote_path.path}")
 
     # Generate and execute code to analyze the pickle files
     analysis_code = _generate_analysis_code(remote_paths)
@@ -49,7 +51,8 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
         print(analysis_code)
         print("-" * 40)
 
-    exec_result = code_interpreter.notebook.exec_cell(
+    # Use run_code instead of notebook.exec_cell
+    exec_result = code_interpreter.run_code(
         analysis_code,
         on_stdout=lambda stdout: print(stdout) if verbose else None,
         on_stderr=lambda stderr: print(f"Error: {stderr}") if stderr else None,
@@ -63,14 +66,20 @@ def analyze_pickle_files(pickle_files: List[str], verbose: bool = False) -> None
     if verbose:
         print("\nAnalysis results:")
 
-    for result in exec_result.results:
-        if hasattr(result, "data"):
-            if "text/plain" in result.data:
-                print(result.data["text/plain"])
-            elif "text/html" in result.data:
-                print("HTML output available (not displayed in console)")
-        else:
-            print(result)
+    # Output the result text
+    if hasattr(exec_result, "text"):
+        print(exec_result.text)
+    elif hasattr(exec_result, "results"):
+        for result in exec_result.results:
+            if hasattr(result, "data"):
+                if "text/plain" in result.data:
+                    print(result.data["text/plain"])
+                elif "text/html" in result.data:
+                    print("HTML output available (not displayed in console)")
+            else:
+                print(result)
+    else:
+        print("No results were returned.")
 
 
 def _generate_analysis_code(remote_paths: List[tuple[str, str]]) -> str:
@@ -110,20 +119,30 @@ def analyze_pickle(file_path: str) -> Dict[str, Any]:
             result['keys_count'] = len(data)
             result['key_types'] = list(set(type(k).__name__ for k in data.keys()))
             result['value_types'] = list(set(type(v).__name__ for v in data.values()))
-            result['sample_keys'] = list(data.keys())[:5] if len(data) > 0 else []
+            result['sample_keys'] = [str(k)[:100] for k in list(data.keys())[:5]] if len(data) > 0 else []
         elif isinstance(data, (list, tuple)):
             result['length'] = len(data)
             result['element_types'] = list(set(type(item).__name__ for item in data[:100]))
-            result['sample_elements'] = data[:5] if len(data) > 0 else []
+            # Convert elements to strings to avoid serialization issues with complex objects
+            result['sample_elements'] = [str(e)[:100] for e in data[:5]] if len(data) > 0 else []
         elif isinstance(data, pd.DataFrame):
             result['shape'] = data.shape
             result['columns'] = list(data.columns)
-            result['dtypes'] = {col: str(dtype) for col, dtype in data.dtypes.items()}
-            result['sample_data'] = data.head(5).to_dict() if not data.empty else {}
+            result['dtypes'] = {str(col): str(dtype) for col, dtype in data.dtypes.items()}
+            # Convert DataFrames to_dict with orient='records' for better serialization
+            try:
+                result['sample_data'] = data.head(5).to_dict(orient='records') if not data.empty else {}
+            except:
+                result['sample_data'] = str(data.head(5))
         elif isinstance(data, np.ndarray):
             result['shape'] = data.shape
             result['dtype'] = str(data.dtype)
-            result['sample_data'] = data.flatten()[:5].tolist() if data.size > 0 else []
+            # Convert numpy arrays to lists for better serialization
+            try:
+                flat_data = data.flatten()[:5]
+                result['sample_data'] = [float(x) if np.isscalar(x) else str(x) for x in flat_data]
+            except:
+                result['sample_data'] = str(data.flatten()[:5])
         
         return result
     except Exception as e:
@@ -137,11 +156,11 @@ def analyze_pickle(file_path: str) -> Dict[str, Any]:
 results = {}
 """
 
-    # Add code to analyze each file
+    # Add code to analyze each file - using raw strings for paths
     for original_name, remote_path in remote_paths:
         code += f"""
 print(f"Analyzing {original_name}...")
-results["{original_name}"] = analyze_pickle("{remote_path}")
+results["{original_name}"] = analyze_pickle({repr(remote_path)})
 """
 
     # Add code to print results
@@ -182,7 +201,7 @@ for file_name, result in results.items():
                 print(f"  - {col}: {dtype}")
             if result['sample_data']:
                 print("Sample data (first 5 rows):")
-                print(pd.DataFrame(result['sample_data']))
+                print(result['sample_data'])
         
         if 'dtype' in result:  # NumPy array
             print(f"Data type: {result['dtype']}")
