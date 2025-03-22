@@ -294,7 +294,7 @@ def save_uploaded_files(content, filename, file_type="data"):
     """
     valid_extensions = {
         "data": [".pkl", ".pickle", ".csv", ".parquet", ".xls", ".xlsx"],
-        "context": [".txt", ".pdf", ".docx", ".doc"],
+        "context": [".txt", ".pdf", ".docx", ".doc", ".md"],
     }
 
     # Check extension
