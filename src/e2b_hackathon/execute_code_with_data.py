@@ -117,13 +117,50 @@ def execute_code_with_data(
         stdout_buffer = io.StringIO()
         stderr_buffer = io.StringIO()
 
-        def on_stdout(stdout: str) -> None:
-            stdout_buffer.write(stdout)
-            results["stdout"] += stdout
+        def on_stdout(stdout: Any) -> None:
+            # Handle OutputMessage objects by directly accessing their text attribute
+            try:
+                # Check if this is likely an OutputMessage object
+                if stdout is not None and hasattr(stdout, "text"):
+                    # Get the text content as a string
+                    text = str(stdout.text)
+                    stdout_buffer.write(text)
+                    results["stdout"] += text
+                elif isinstance(stdout, str):
+                    # If it's already a string, use it directly
+                    stdout_buffer.write(stdout)
+                    results["stdout"] += stdout
+                else:
+                    # Fallback: try to convert to string
+                    text = str(stdout)
+                    stdout_buffer.write(text)
+                    results["stdout"] += text
+            except Exception as e:
+                err_msg = f"Error processing stdout: {str(e)}"
+                logger.error(err_msg)
+                results["stderr"] += err_msg + "\n"
 
-        def on_stderr(stderr: str) -> None:
-            stderr_buffer.write(stderr)
-            results["stderr"] += stderr
+        def on_stderr(stderr: Any) -> None:
+            # Handle OutputMessage objects by directly accessing their text attribute
+            try:
+                # Check if this is likely an OutputMessage object
+                if stderr is not None and hasattr(stderr, "text"):
+                    # Get the text content as a string
+                    text = str(stderr.text)
+                    stderr_buffer.write(text)
+                    results["stderr"] += text
+                elif isinstance(stderr, str):
+                    # If it's already a string, use it directly
+                    stderr_buffer.write(stderr)
+                    results["stderr"] += stderr
+                else:
+                    # Fallback: try to convert to string
+                    text = str(stderr)
+                    stderr_buffer.write(text)
+                    results["stderr"] += text
+            except Exception as e:
+                err_msg = f"Error processing stderr: {str(e)}"
+                logger.error(err_msg)
 
         # Execute the code
         execution = sandbox.run_code(code, on_stdout=on_stdout, on_stderr=on_stderr)
