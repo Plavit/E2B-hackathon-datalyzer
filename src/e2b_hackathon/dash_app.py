@@ -467,19 +467,50 @@ def parse_analysis_results(analysis_text: str) -> Dict[str, Dict[str, Any]]:
     Returns:
         Dictionary with parsed analysis results
     """
+    # Debug log the analysis text
+    log.debug(
+        "Parsing analysis results",
+        text_length=len(analysis_text),
+        text_sample=analysis_text[:200] + ("..." if len(analysis_text) > 200 else ""),
+    )
+
     # Split into sections by file
     sections = analysis_text.split("=" * 50)
     sections = [s.strip() for s in sections if s.strip()]
 
+    log.debug(f"Found {len(sections)} sections in analysis text")
+
     results = {}
 
-    for section in sections:
+    for i, section in enumerate(sections):
         lines = section.split("\n")
         if len(lines) < 2:
+            log.warning(f"Section {i} too short to parse", lines_count=len(lines))
             continue
 
         # Extract filename from the first line
-        file_name = lines[0].replace("Analysis of ", "").replace(":", "")
+        first_line = lines[0]
+        log.debug(f"Processing section {i}, first line: {first_line}")
+
+        # Check for the expected "Analysis of [filename]:" pattern
+        if "Analysis of " in first_line and ":" in first_line:
+            file_name = first_line.replace("Analysis of ", "").replace(":", "").strip()
+            log.debug(f"Extracted file name: '{file_name}'")
+        else:
+            log.warning(
+                f"Couldn't extract file name from section {i}", first_line=first_line
+            )
+            # Try a more flexible pattern
+            file_name = f"unknown_file_{i}"
+            for line in lines[:3]:  # Check first few lines
+                if ".pkl" in line or ".pickle" in line:
+                    potential_name = line.split("/")[-1].split()[0]
+                    if potential_name.endswith(".pkl") or potential_name.endswith(
+                        ".pickle"
+                    ):
+                        file_name = potential_name
+                        log.debug(f"Found potential file name: {file_name}")
+                        break
 
         # Extract other information
         file_info = {}
@@ -517,7 +548,12 @@ def parse_analysis_results(analysis_text: str) -> Dict[str, Dict[str, Any]]:
             )
 
         results[file_name] = file_info
+        log.debug(f"Added results for '{file_name}' with {len(file_info)} properties")
 
+    log.info(
+        f"Finished parsing results for {len(results)} files",
+        file_names=list(results.keys()),
+    )
     return results
 
 
@@ -587,7 +623,109 @@ def get_additional_info_component(
     """
     components = []
 
-    if file_type == "dict":
+    if "Pickle File" in file_type:
+        # Information for pickle file
+        analyzed_objects = file_info.get("Analyzed Objects", [])
+        if analyzed_objects:
+            # Display summary of analyzed objects
+            object_count = len(analyzed_objects)
+            object_types = file_info.get("Object Type Summary", {})
+
+            components.extend(
+                [
+                    html.H6("Pickle Analysis Summary", className="mt-3"),
+                    dbc.ListGroup(
+                        [
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Objects Found: "),
+                                    html.Span(str(object_count)),
+                                ]
+                            ),
+                            dbc.ListGroupItem(
+                                [
+                                    html.Strong("Object Types: "),
+                                    html.Span(
+                                        ", ".join(
+                                            [
+                                                f"{k} ({v})"
+                                                for k, v in object_types.items()
+                                            ]
+                                        )
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="mb-3",
+                    ),
+                ]
+            )
+
+            # Create accordion for each object
+            object_cards = []
+            for i, obj in enumerate(analyzed_objects):
+                obj_type = obj.get("Object Type", "Unknown")
+                obj_details = []
+
+                # Create list items for each property
+                for key, value in obj.items():
+                    if key not in ["Object Index"]:
+                        obj_details.append(
+                            dbc.ListGroupItem(
+                                [html.Strong(f"{key}: "), html.Span(str(value))]
+                            )
+                        )
+
+                # Create card for this object
+                object_cards.append(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader(
+                                dbc.Button(
+                                    f"Object #{i + 1}: {obj_type}",
+                                    id={"type": "object-button", "index": i},
+                                    color="link",
+                                    className="text-left",
+                                )
+                            ),
+                            dbc.Collapse(
+                                dbc.CardBody([dbc.ListGroup(obj_details)]),
+                                id={"type": "object-collapse", "index": i},
+                                is_open=False,
+                            ),
+                        ],
+                        className="mb-2",
+                    )
+                )
+
+            components.append(
+                html.Div(
+                    [
+                        html.H6("Analyzed Objects", className="mt-3"),
+                        html.Div(object_cards),
+                    ]
+                )
+            )
+        else:
+            # Show raw output if no objects were parsed
+            raw_output = file_info.get("Raw Output", "No output available")
+            components.append(
+                html.Div(
+                    [
+                        html.H6("Raw Analysis Output", className="mt-3"),
+                        dbc.Card(
+                            dbc.CardBody(
+                                html.Pre(
+                                    raw_output,
+                                    style={"maxHeight": "300px", "overflowY": "auto"},
+                                )
+                            ),
+                            className="mb-3",
+                        ),
+                    ]
+                )
+            )
+    elif file_type == "dict":
         # Information for dictionary
         keys_count = file_info.get("Number of keys", "Unknown")
         key_types = file_info.get("Key types", "Unknown")
@@ -1462,7 +1600,16 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
             try:
                 # For pickle files, analyze securely in E2B sandbox
                 log.info(
-                    "Analyzing pickle file securely in E2B sandbox", file_path=file_path
+                    "Analyzing pickle file securely in E2B sandbox",
+                    file_path=file_path,
+                    file_name=file_name,
+                    file_size=file_size,
+                )
+
+                # Debug: Log the analyze_pickle_files function to ensure it exists
+                log.debug(
+                    "Type of analyze_pickle_files:",
+                    type=str(type(analyze_pickle_files)),
                 )
 
                 # Create a string buffer to capture the output of analyze_pickle_files
@@ -1471,23 +1618,63 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                 sys.stdout = output_buffer
 
                 # Call the function from pickle_analyzer to analyze the pickle in a sandbox
-                analyze_pickle_files([file_path], verbose=False)
+                log.debug("About to call analyze_pickle_files", file_path=file_path)
+                analyze_pickle_files(
+                    [file_path], verbose=True
+                )  # Set verbose to True for more output
+                log.debug("Finished calling analyze_pickle_files")
 
                 # Restore stdout and get the captured output
                 sys.stdout = original_stdout
                 analysis_output = output_buffer.getvalue()
 
-                # Parse the analysis results
-                parsed_results = parse_analysis_results(analysis_output)
+                # Debug: Log the raw output
+                log.debug(
+                    "Raw output from analyze_pickle_files",
+                    output_length=len(analysis_output),
+                    output_preview=analysis_output[:500]
+                    + ("..." if len(analysis_output) > 500 else ""),
+                )
 
-                if parsed_results and file_name in parsed_results:
-                    # Add the secure analysis results to our file_info
-                    file_info.update(parsed_results[file_name])
-                    file_info["Type"] = "Pickle File (Securely Analyzed)"
-                    file_info["Analysis Method"] = "E2B Sandbox"
+                # We're going to parse the output directly without trying to match filenames
+                file_info["Type"] = "Pickle File (Securely Analyzed)"
+                file_info["Analysis Method"] = "E2B Sandbox"
+
+                # Parse the output and associate all objects with this file
+                analyzed_objects = parse_sandbox_output(analysis_output)
+
+                if analyzed_objects:
+                    # Add the object information to our results
+                    file_info["Analyzed Objects"] = analyzed_objects
+                    file_info["Num Objects"] = len(analyzed_objects)
+
+                    # Extract a summary of object types
+                    object_types = [
+                        obj.get("Object Type", "Unknown") for obj in analyzed_objects
+                    ]
+                    type_counts = {}
+                    for obj_type in object_types:
+                        if obj_type in type_counts:
+                            type_counts[obj_type] += 1
+                        else:
+                            type_counts[obj_type] = 1
+                    file_info["Object Type Summary"] = type_counts
+
+                    log.info(
+                        "Successfully analyzed pickle file",
+                        file_name=file_name,
+                        num_objects=len(analyzed_objects),
+                        object_types=type_counts,
+                    )
                 else:
-                    file_info["Type"] = "Pickle File"
-                    file_info["Warning"] = "No detailed analysis available from sandbox"
+                    log.warning(
+                        "No objects found in pickle file analysis",
+                        file_name=file_name,
+                        analysis_output_sample=analysis_output[:200] + "..."
+                        if analysis_output
+                        else "No output",
+                    )
+                    file_info["Warning"] = "No objects found in analysis"
                     file_info["Raw Output"] = analysis_output
 
                 return file_info
@@ -1495,6 +1682,7 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                 log.error(
                     "Failed to analyze pickle file in sandbox",
                     error=str(e),
+                    traceback=traceback.format_exc(),
                     file_path=file_path,
                 )
                 return {
@@ -1899,6 +2087,110 @@ The code should be self-contained and handle reading the files from their paths.
             "error": f"Failed to generate analysis plan: {str(e)}",
             "traceback": traceback.format_exc(),
         }
+
+
+def parse_sandbox_output(analysis_text: str) -> List[Dict[str, Any]]:
+    """
+    Parse the raw output from the E2B sandbox analysis of pickle files.
+
+    Instead of trying to associate each section with a filename, we treat each section
+    as an individual object analysis and return a list of analyzed objects.
+
+    Args:
+        analysis_text: The raw text output from pickle_analyzer
+
+    Returns:
+        List of dictionaries with analysis results for each object
+    """
+    # Debug log the analysis text
+    log.debug(
+        "Parsing sandbox output",
+        text_length=len(analysis_text),
+        text_sample=analysis_text[:200] + ("..." if len(analysis_text) > 200 else ""),
+    )
+
+    # Split into sections by the separator (50 equal signs)
+    sections = analysis_text.split("=" * 50)
+    sections = [s.strip() for s in sections if s.strip()]
+
+    log.debug(f"Found {len(sections)} sections in analysis text")
+
+    analyzed_objects = []
+
+    for i, section in enumerate(sections):
+        lines = section.split("\n")
+        if len(lines) < 2:
+            log.warning(f"Section {i} too short to parse", lines_count=len(lines))
+            continue
+
+        # Extract information about this object
+        object_info = {}
+        current_key = None
+        current_value = []
+
+        # Check if this section contains object analysis
+        contains_analysis = False
+        for line in lines:
+            if (
+                "Object Type:" in line
+                or "Type:" in line
+                or "Value:" in line
+                or "Contents:" in line
+            ):
+                contains_analysis = True
+                break
+
+        if not contains_analysis:
+            log.debug(
+                f"Section {i} doesn't appear to contain object analysis, skipping"
+            )
+            continue
+
+        # Process line by line
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # If it's a new key-value pair
+            if ": " in line and not line.startswith(" "):
+                # Save the previous key-value pair if it exists
+                if current_key:
+                    object_info[current_key] = (
+                        "\n".join(current_value)
+                        if len(current_value) > 1
+                        else current_value[0]
+                    )
+                    current_value = []
+
+                # Start a new key-value pair
+                try:
+                    current_key, value = line.split(": ", 1)
+                    current_value.append(value)
+                except ValueError:
+                    # If there's a problem with splitting, just store the whole line
+                    log.warning(f"Could not parse line properly: {line}")
+                    if current_key:
+                        current_value.append(line)
+            else:
+                # Continue with the current value
+                if current_key:
+                    current_value.append(line)
+
+        # Save the last key-value pair
+        if current_key:
+            object_info[current_key] = (
+                "\n".join(current_value) if len(current_value) > 1 else current_value[0]
+            )
+
+        if object_info:
+            # Add an index to identify the object
+            object_info["Object Index"] = i
+            analyzed_objects.append(object_info)
+            log.debug(f"Added object #{i} with {len(object_info)} properties")
+
+    log.info(f"Finished parsing {len(analyzed_objects)} objects from sandbox output")
+    return analyzed_objects
 
 
 def main():
