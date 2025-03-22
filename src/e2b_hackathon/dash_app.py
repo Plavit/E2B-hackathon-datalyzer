@@ -2,15 +2,15 @@ import os
 import base64
 import tempfile
 import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, Union, cast
+from typing import List, Dict, Any
 
 import dash
 from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc  # type: ignore
-import plotly.graph_objects as go  # type: ignore
+
+# import plotly.graph_objects as go  # type: ignore
 import plotly.express as px  # type: ignore
-import pandas as pd
+import structlog
 
 from e2b_hackathon.pickle_analyzer import analyze_pickle_files
 
@@ -19,8 +19,9 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
-    title="Pickle File Analyzer",
+    title="Datalyzer",
 )
+log = structlog.get_logger()
 
 # Define application layout
 layout = dbc.Container(
@@ -641,6 +642,7 @@ def update_output(contents, filenames):
         return html.Div(output_elements), "", files_display, ""
 
     except Exception as e:
+        log.exception("Pickle file upload error")
         # Return error message
         return (
             html.Div(),

@@ -17,6 +17,7 @@ dependencies = [
     "dash>=3.0.0",
     "dash-bootstrap-components>=2.0.0",
     "plotly>=6.0.0",
+    "structlog>=25.2.0",
 ]
 
 [project.scripts]
