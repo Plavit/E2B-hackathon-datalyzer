@@ -293,7 +293,7 @@ def save_uploaded_files(content, filename, file_type="data"):
         Path to the saved file
     """
     valid_extensions = {
-        "data": [".pkl", ".pickle", ".csv", ".parquet"],
+        "data": [".pkl", ".pickle", ".csv", ".parquet", ".xls", ".xlsx"],
         "context": [".txt", ".pdf", ".docx", ".doc"],
     }
 
@@ -1768,6 +1768,17 @@ def analyze_data_file(file_path: str) -> Dict[str, Any]:
                     "Failed to analyze CSV file", error=str(e), file_path=file_path
                 )
                 return {"error": f"Failed to analyze CSV file: {str(e)}"}
+        elif ext in {".xls", ".xlsx"}:
+            try:
+                df = pd.read_excel(file_path)
+                file_info.update(analyze_dataframe(df))
+                file_info["Type"] = "DataFrame (XLSX)"
+                return file_info
+            except Exception as e:
+                log.error(
+                    "Failed to analyze XLSX file", error=str(e), file_path=file_path
+                )
+                return {"error": f"Failed to analyze Excel file: {str(e)}"}
 
         elif ext == ".parquet":
             try:
