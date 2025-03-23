@@ -56,7 +56,7 @@ navbar = dbc.Navbar(
     dark=False,
     className="mb-4",
     fixed="top",  # Makes navbar sticky at top
-    style={"width": "100%"}  # Ensures full width
+    style={"width": "100%"},  # Ensures full width
 )
 
 # Initialize OpenAI client (will use API key from environment)
@@ -3149,6 +3149,7 @@ In "analysis_code":
 - The code should be self-contained and handle reading the files from their paths.
 - It should contain no placeholders or truncations, only valid Python.
 - Avoid triple backticks at the start or the end, just issue Python straightaway.
+- Do *NOT* use geopandas.
 """
 
     try:
