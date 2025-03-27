@@ -61,7 +61,7 @@ It is an AI hackathon, we used AI (cursor FTW), vibe coding and coffee. Anyway, 
 - Dependencies: pandas, pyarrow, fastparquet, python-docx, PyPDF2, openai, dash
 - Frontend is using Plotly D
 
-Built by [Marek Miltner (@Plavit)](https://github.com/Plavit/) and [Šimon odhajský (@Shippy)](https://github.com/Shippy/)
+Built by [Marek Miltner (@Plavit)](https://github.com/Plavit/) and [Šimon Podhajský (@Shippy)](https://github.com/Shippy/)
 
 Start of hackathon when we refined the idea: ca. 🕚11AM:
 ![photo_2025-03-22_15-35-09](https://github.com/user-attachments/assets/a2bd3ff6-10f8-4c2f-a484-ed2440a2852c)
